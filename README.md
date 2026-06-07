@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ron’s Torn Command Center
 
-## Getting Started
+A personal Torn dashboard built with Next.js, TypeScript, Tailwind CSS, and server-side Torn API integration.
 
-First, run the development server:
+## What this app does
+
+- Public share page at `/` for friends and allies.
+- Private admin dashboard at `/admin` with a simple password gate.
+- Settings page at `/settings` for consumable watchlist thresholds.
+- Server-side Torn API proxy routes under `/api/torn/*`.
+- Torn API key is stored only in environment variables and never exposed to client-side code.
+- Local persistence with Prisma/SQLite for watchlist settings and snapshots.
+
+## Run locally
+
+1. Copy `.env.example` to `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
+
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+3. Generate Prisma client:
+
+```bash
+npx prisma generate
+```
+
+4. Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Required environment variables
 
-## Learn More
+Create `.env.local` with:
 
-To learn more about Next.js, take a look at the following resources:
+```env
+TORN_API_KEY=your_torn_api_key_here
+DASHBOARD_PASSWORD=your_dashboard_password
+NEXT_PUBLIC_APP_NAME=Ron’s Torn Command Center
+DATABASE_URL=file:./prisma/dev.db
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+See `DEPLOYMENT.md` for detailed GitHub and Vercel deployment instructions.
 
-## Deploy on Vercel
+## How to update
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Make your code changes.
+2. Run lint and build checks:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npm run build
+```
+
+3. Commit and push to GitHub.
+4. Vercel will redeploy automatically after push.
+
+## Project structure
+
+- `src/app/` – app routes, pages, and API route handlers
+- `src/components/` – reusable dashboard components
+- `src/lib/` – Torn service, caching, and database helper functions
+- `prisma/` – database schema and migration support
+
+## Notes
+
+- Do not commit `.env.local`.
+- The Torn API key is server-only and not exposed to browser JavaScript.
+- Use `/admin` and `/settings` only after logging in with `DASHBOARD_PASSWORD`.
+- The app is designed to run on Vercel with secure environment variables.

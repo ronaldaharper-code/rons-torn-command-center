@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Setting {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  value String
+}
+
+model ItemWatch {
+  id          Int     @id @default(autoincrement())
+  itemName    String  @unique
+  minTarget   Int     @default(0)
+  alertEnabled Boolean @default(true)
+}
+
+model Snapshot {
+  id        Int      @id @default(autoincrement())
+  type      String
+  data      String
+  createdAt DateTime @default(now())
+}
