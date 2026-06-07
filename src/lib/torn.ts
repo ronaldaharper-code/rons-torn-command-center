@@ -60,15 +60,26 @@ async function fetchTorn<T>(selections: string): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
+    console.error(`[Torn API Error] Status: ${response.status}, Body: ${text}`);
     throw new Error(`Torn API request failed (${response.status}): ${text}`);
   }
 
   const json = (await response.json()) as T;
+  
+  // Log if we got an error response
+  if ((json as any).error) {
+    console.error("[Torn API] Error response:", (json as any).error);
+  }
+  
   return json;
 }
 
 export async function getTornUserData(): Promise<TornUserData> {
-  return cached<TornUserData>("torn:user:data", 120, () => fetchTorn<TornUserData>(ADMIN_SELECTIONS));
+  return cached<TornUserData>("torn:user:data", 120, async () => {
+    const data = await fetchTorn<TornUserData>(ADMIN_SELECTIONS);
+    console.log("[getTornUserData] Raw API response:", JSON.stringify(data).substring(0, 500));
+    return data;
+  });
 }
 
 export async function getTornPublicData(): Promise<TornUserData> {
