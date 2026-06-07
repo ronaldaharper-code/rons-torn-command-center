@@ -1,6 +1,9 @@
 import { cookies } from "next/headers";
 import { AdminDashboard } from "@/components/AdminDashboard";
 import { AdminLoginForm } from "@/components/AdminLoginForm";
+import SidebarNav from "@/components/SidebarNav";
+import CharacterOverviewCard from "@/components/CharacterOverviewCard";
+import NetWorthCard from "@/components/NetWorthCard";
 import { getTornUserData, mapAdminSummary } from "@/lib/torn";
 
 async function isAuthenticated() {
@@ -33,10 +36,54 @@ export default async function AdminPage() {
   const summary = mapAdminSummary(data);
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.08),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_28%),#03050c] px-4 py-8 text-white sm:px-6 lg:px-10">
-      <div className="mx-auto max-w-7xl">
-        <AdminDashboard summary={summary} />
-      </div>
-    </main>
+    <div className="min-h-screen bg-slate-950 text-white">
+      {/* Sidebar */}
+      <SidebarNav />
+
+      {/* Main Content */}
+      <main className="ml-48 p-6">
+        {/* Header */}
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-white">
+              <span className="text-amber-400">👑</span> Private Command Center
+            </h1>
+            <p className="text-slate-400 mt-1">
+              Last synced: {summary.lastSynced}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-slate-400">Readiness</p>
+            <p className="text-2xl font-bold text-green-400">✓ Ready</p>
+          </div>
+        </div>
+
+        {/* Character Overview */}
+        <div className="mb-8">
+          <CharacterOverviewCard
+            data={summary.character}
+            profileImage={data.basic?.image}
+          />
+        </div>
+
+        {/* Net Worth */}
+        <div className="mb-8">
+          <NetWorthCard data={summary.financial} />
+        </div>
+
+        {/* Coming Soon Sections */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-white mb-4">Jump Planner</h3>
+            <p className="text-slate-400 text-sm">Coming soon...</p>
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-white mb-4">Crimes & Cooldowns</h3>
+            <p className="text-slate-400 text-sm">Coming soon...</p>
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }

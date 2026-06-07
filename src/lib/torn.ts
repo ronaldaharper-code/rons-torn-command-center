@@ -1,5 +1,5 @@
 import { cached } from "./cache";
-import type { AdminSummary, PublicSummary, TornUserData, TornCharacterStatus } from "./torn-types";
+import type { AdminSummary, PublicSummary, TornUserData, TornCharacterStatus, CharacterOverview, FinancialSnapshot } from "./torn-types";
 
 const TORN_API_BASE = "https://api.torn.com";
 const TORN_API_KEY = process.env.TORN_API_KEY;
@@ -9,7 +9,6 @@ const PUBLIC_SELECTIONS = [
   "stats",
   "travel",
   "networth",
-  "inventory",
 ].join(",");
 const ADMIN_SELECTIONS = [
   "basic",
@@ -20,6 +19,11 @@ const ADMIN_SELECTIONS = [
   "inventory",
   "items",
   "properties",
+  "weapons",
+  "armor",
+  "garage",
+  "crimes",
+  "chain",
 ].join(",");
 
 function parseStatus(data: TornUserData): TornCharacterStatus {
@@ -88,6 +92,47 @@ function buildInventoryMap(inventory?: TornUserData["inventory"], items?: TornUs
   return counts;
 }
 
+function extractStat(profile: any, key: string): { current: number; maximum: number } {
+  const value = profile?.[key];
+  if (typeof value === "object" && value !== null && "current" in value) {
+    return { current: value.current || 0, maximum: value.maximum || 0 };
+  }
+  return { current: 0, maximum: 0 };
+}
+
+export function mapCharacterOverview(data: TornUserData): CharacterOverview {
+  const profile = data.profile as any || {};
+  return {
+    name: data.basic?.name ?? "Unknown",
+    playerID: data.basic?.player_id ?? 0,
+    level: data.basic?.level ?? 0,
+    rank: data.basic?.rank ?? "Unknown",
+    life: extractStat(profile, "life"),
+    energy: extractStat(profile, "energy"),
+    nerve: extractStat(profile, "nerve"),
+    happy: extractStat(profile, "happy"),
+    status: parseStatus(data),
+    chain: {
+      current: (data.chain as any)?.current ?? 0,
+      max: (data.chain as any)?.max ?? 0,
+    },
+    points: profile.points ?? 0,
+    merits: profile.merits ?? 0,
+  };
+}
+
+export function mapFinancialSnapshot(data: TornUserData): FinancialSnapshot {
+  return {
+    cash: data.networth?.cash ?? 0,
+    bank: data.networth?.bank ?? 0,
+    stock: data.networth?.stock ?? 0,
+    properties: data.networth?.property ?? 0,
+    items: data.networth?.items ?? 0,
+    total: data.networth?.total ?? 0,
+    lastUpdated: Date.now(),
+  };
+}
+
 export function mapPublicSummary(data: TornUserData): PublicSummary {
   const status = parseStatus(data);
   return {
@@ -103,28 +148,26 @@ export function mapPublicSummary(data: TornUserData): PublicSummary {
 }
 
 export function mapAdminSummary(data: TornUserData): AdminSummary {
-  const publicSummary = mapPublicSummary(data);
   return {
-    ...publicSummary,
-    energy: Number((data.profile as any)?.energy ?? 0),
-    nerve: Number((data.profile as any)?.nerve ?? 0),
-    happy: Number((data.profile as any)?.happy ?? 0),
-    life: Number((data.profile as any)?.life ?? 0),
-    drugCooldown: (data.profile as any)?.drug_cooldown ?? "Unknown",
-    boosterCooldown: (data.profile as any)?.booster_cooldown ?? "Unknown",
-    medicalCooldown: (data.profile as any)?.medical_cooldown ?? "Unknown",
-    inventory: buildInventoryMap(data.inventory, data.items),
-    stats: data.stats,
+    character: mapCharacterOverview(data),
+    financial: mapFinancialSnapshot(data),
+    gear: (data as any).gear,
+    garage: data.garage,
+    crimes: data.crimes,
+    chain: (data.chain as any),
+    cooldowns: (data as any).cooldowns,
+    lastSynced: formatTimestamp(Date.now()),
   };
 }
 
 export function getPriorityMessages(summary: AdminSummary) {
   const messages: string[] = [];
-  if (summary.happy !== undefined && summary.happy < 70) messages.push("Focus on happy items and jump preparation.");
-  if (summary.energy !== undefined && summary.energy < 50) messages.push("Consider using an energy item or training later.");
-  if (summary.cash < 2_000_000) messages.push("Cash is low for a $2B bank plan.");
-  if (summary.status === "hospital") messages.push("Recover from hospital before training.");
-  if (summary.status === "jail") messages.push("Wait for jail or rehab clearance.");
+  const charData = summary.character;
+  if (charData.happy.current < 70) messages.push("Focus on happy items and jump preparation.");
+  if (charData.energy.current < 50) messages.push("Consider using an energy item or training later.");
+  if (summary.financial.cash < 2_000_000) messages.push("Cash is low for a $2B bank plan.");
+  if (charData.status === "hospital") messages.push("Recover from hospital before training.");
+  if (charData.status === "jail") messages.push("Wait for jail or rehab clearance.");
   if (!messages.length) messages.push("Overall status looks stable. Maintain your current plan.");
   return messages;
 }
