@@ -48,7 +48,7 @@ Create `.env.local` with:
 TORN_API_KEY=your_torn_api_key_here
 DASHBOARD_PASSWORD=your_dashboard_password
 NEXT_PUBLIC_APP_NAME=Ron’s Torn Command Center
-DATABASE_URL=file:./prisma/dev.db
+DATABASE_URL=file:./dev.db
 ```
 
 ## Deployment

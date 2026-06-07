@@ -20,7 +20,7 @@ This project is designed for Vercel deployment with server-side Torn API integra
 - `TORN_API_KEY`: Your Torn API key. This must remain secret and must not be exposed in client-side code.
 - `DASHBOARD_PASSWORD`: The password used for private `/admin` and `/settings` access.
 - `NEXT_PUBLIC_APP_NAME`: Display name for the app.
-- `DATABASE_URL`: Production database connection string. For local development use `file:./prisma/dev.db`, but for Vercel use a hosted Postgres database.
+- `DATABASE_URL`: Production database connection string. For local development use `file:./dev.db`, but for Vercel use a hosted Postgres database.
 
 ## Notes
 
