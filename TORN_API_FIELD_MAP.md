@@ -7,6 +7,18 @@ guesswork — these results come from testing every selection individually
 against a real key (currently a **"Public Only" / access level 1** key — see
 "Current key status" below).
 
+To re-run these tests yourself (without ever printing the key), use:
+
+```
+npm run verify:torn-api
+```
+
+This regenerates [`docs/API_VERIFICATION_RESULTS.md`](docs/API_VERIFICATION_RESULTS.md)
+with a fresh per-selection pass/fail table, error codes, messages, and the
+top-level fields returned on success — re-run it whenever you swap in a new
+key. The summary below was last refreshed from that script's output on
+2026-06-08.
+
 Torn API key access levels (from lowest to highest):
 
 | Level | Name            | Notes                                                |
@@ -22,30 +34,34 @@ battle stats, etc.) because that data is sensitive.
 
 ## Selection → requirement → status
 
-Tested individually with `GET https://api.torn.com/user/?selections=<selection>&key=<key>`:
+Tested individually via `npm run verify:torn-api`, which calls
+`GET https://api.torn.com/user/?selections=<selection>&key=<key>` once per
+selection (full raw output: [`docs/API_VERIFICATION_RESULTS.md`](docs/API_VERIFICATION_RESULTS.md)):
 
-| Selection      | Used for                  | Result with current key | Likely required level |
-|----------------|---------------------------|--------------------------|------------------------|
-| `basic`        | Name, level, rank, image  | ✅ OK                    | Public                |
-| `profile`      | Energy/nerve/happy/life, points, merits | ✅ OK      | Public                |
-| `properties`   | Properties module         | ✅ OK                    | Public                |
-| `stats`        | Battle stats total        | ❌ Access level too low  | Minimal/Limited       |
-| `travel`       | Travel status             | ❌ Access level too low  | Minimal/Limited       |
-| `networth`     | Net worth, cash, bank     | ❌ Access level too low  | Limited/Full          |
-| `inventory`    | Watchlist & usage tracking| ❌ Access level too low  | Limited/Full          |
-| `weapons`      | Gear module               | ❌ Access level too low  | Limited/Full          |
-| `armor`        | Gear module               | ❌ Access level too low  | Limited/Full          |
-| `crimes`       | Crime cooldown signal     | ❌ Access level too low  | Limited/Full          |
-| `chain`        | Faction chain status      | ❌ Access level too low  | Limited/Full          |
-| `cooldowns`    | Cooldowns card            | ❌ Access level too low  | Limited/Full          |
-| `enlistedcars` | Racing/garage module      | ❌ Access level too low  | Limited/Full          |
+| Selection      | Used for                  | Result with current key | Error code | Top-level fields returned |
+|----------------|---------------------------|--------------------------|------------|----------------------------|
+| `basic`        | Name, level, rank, image  | ✅ success               | —          | `level, gender, player_id, name, status` |
+| `profile`      | Energy/nerve/happy/life, points, merits | ✅ success | —     | `rank, level, honor, gender, property, signup, awards, friends, enemies, forum_posts, karma, age, role, donator, player_id, name, property_id, revivable, profile_image, life, status, job, faction, married, basicicons, states, last_action, competition` |
+| `properties`   | Properties module         | ✅ success               | —          | `properties` |
+| `stats`        | Battle stats total        | ❌ fail                  | 16         | — |
+| `travel`       | Travel status             | ❌ fail                  | 16         | — |
+| `networth`     | Net worth, cash, bank     | ❌ fail                  | 16         | — |
+| `inventory`    | Watchlist & usage tracking| ❌ fail                  | 16         | — |
+| `weapons`      | Gear module               | ❌ fail                  | 16         | — |
+| `armor`        | Gear module               | ❌ fail                  | 16         | — |
+| `crimes`       | Crime cooldown signal     | ❌ fail                  | 16         | — |
+| `chain`        | Faction chain status      | ❌ fail                  | 16         | — |
+| `cooldowns`    | Cooldowns card            | ❌ fail                  | 16         | — |
+| `enlistedcars` | Racing/garage module      | ❌ fail                  | 16         | — |
 
-> Exact level boundaries aren't published per-selection by Torn — the table
-> above reflects what we observed (`code 16: "Access level of this key is not
-> high enough"`) plus general community knowledge that financial/inventory/
-> combat data sits behind Minimal–Full Access. Re-run the checks below
-> whenever you swap in a new key to get a precise picture:
-> `for sel in basic profile stats travel networth inventory properties weapons armor crimes chain cooldowns enlistedcars; do curl -s "https://api.torn.com/user/?selections=$sel&key=YOUR_KEY" | jq '.error // "OK"'; done`
+> All ten failing selections return the **same** `code 16: "Access level of
+> this key is not high enough"` — Torn doesn't expose finer-grained boundaries
+> per selection in the error response itself, so we can't tell from this test
+> alone whether each one needs Minimal, Limited, or Full Access individually.
+> What we know for certain: Public Only (level 1) covers `basic`, `profile`,
+> `properties` and nothing else in this list. Re-run
+> `npm run verify:torn-api` with a higher-tier key to narrow this down further
+> — each run overwrites `docs/API_VERIFICATION_RESULTS.md` with fresh results.
 
 ## Important API quirk: incompatible selection combinations
 
@@ -82,10 +98,8 @@ Character Overview, Consumables/Snapshots, Gear, Racing, Bank Planner,
 Properties), generate a **custom API key with at least these selections**
 (Torn → Settings → API Keys → Create Custom Key):
 
-- `basic`, `profile`, `properties` — already covered by Public
-- `stats`, `travel` — Minimal/Limited Access
-- `networth`, `inventory`, `cooldowns`, `crimes`, `chain` — Limited/Full Access
-- `weapons`, `armor`, `enlistedcars` — Limited/Full Access (only needed once Gear/Racing modules are built out)
+- `basic`, `profile`, `properties` — already covered by the current Public Only key
+- `stats`, `travel`, `networth`, `inventory`, `weapons`, `armor`, `crimes`, `chain`, `cooldowns`, `enlistedcars` — all currently blocked with `code 16: "Access level of this key is not high enough"`. Torn's error response doesn't break this down further per selection, so we can't yet say whether Minimal or Limited Access unlocks some of these — only that Public Only unlocks none of them. Generate a higher-tier custom key and re-run `npm run verify:torn-api` to see exactly which ones open up at each level.
 
 If Torn's custom key UI doesn't allow this granular a selection, the
 practical recommendation is a **Full Access** key — it's the only level
