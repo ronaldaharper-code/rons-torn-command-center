@@ -8,12 +8,16 @@ import CooldownsCard from "@/components/CooldownsCard";
 import ConsumablesStatusCard from "@/components/ConsumablesStatusCard";
 import CaptureSnapshotButton from "@/components/CaptureSnapshotButton";
 import ApiAccessNotice from "@/components/ApiAccessNotice";
-import { getTornUserData, mapAdminSummary, mapCooldownOverview } from "@/lib/torn";
+import WarReadinessCard from "@/components/WarReadinessCard";
+import { getTornUserData, mapAdminSummary, mapCooldownOverview, getFactionWarStatus } from "@/lib/torn";
 import { buildRecommendations } from "@/lib/advisor";
 import { getRecentSnapshots, estimateConsumableUsage } from "@/lib/snapshot";
+import { getWarReadinessSettings } from "@/lib/settings";
+import { buildWarReadinessPlan } from "@/lib/warReadiness";
+import type { WarTimeSource } from "@/lib/warReadiness";
 import { prisma } from "@/lib/db";
 import { DEFAULT_OWNER_KEY } from "@/lib/owner";
-import type { WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
+import type { FactionWarStatus, WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
 
 const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
 
@@ -65,6 +69,35 @@ export default async function DashboardPage() {
   const recentSnapshots = await getRecentSnapshots(60);
   const usageEstimates = estimateConsumableUsage(watchlist, recentSnapshots);
 
+  const [warReadinessSettings, factionWarStatus] = await Promise.all([
+    getWarReadinessSettings(),
+    getFactionWarStatus().catch((): FactionWarStatus => ({})),
+  ]);
+
+  let rankedWarStartMs: number | undefined;
+  let rankedWarSource: WarTimeSource = "none";
+  if (factionWarStatus.rankedWar) {
+    rankedWarStartMs = factionWarStatus.rankedWar.startMs;
+    rankedWarSource = "api";
+  } else if (warReadinessSettings.manualRankedWarStart) {
+    const parsed = new Date(warReadinessSettings.manualRankedWarStart);
+    if (!Number.isNaN(parsed.getTime())) {
+      rankedWarStartMs = parsed.getTime();
+      rankedWarSource = "manual";
+    }
+  }
+
+  const warReadinessPlan = buildWarReadinessPlan({
+    character: summary.character,
+    cooldowns: summary.cooldowns,
+    cooldownOverview: cooldowns,
+    inventory: data.inventory,
+    rankedWarStartMs,
+    rankedWarSource,
+    preferredTimeZone: warReadinessSettings.preferredTimeZone,
+    vicodinCooldownAssumptionMinutes: warReadinessSettings.vicodinCooldownAssumptionMinutes,
+  });
+
   const recommendations = buildRecommendations({
     character: summary.character,
     battleStats: data.battlestats,
@@ -76,6 +109,7 @@ export default async function DashboardPage() {
     equipment: summary.equipment,
     enlistedcars: summary.enlistedcars,
     snapshots: recentSnapshots,
+    warReadiness: warReadinessPlan,
   });
 
   const displayName = summary.character.name !== "Unknown" ? summary.character.name : undefined;
@@ -118,6 +152,11 @@ export default async function DashboardPage() {
             characterName={displayName}
             maxItems={5}
           />
+        </div>
+
+        {/* War Readiness Countdown */}
+        <div className="mb-8">
+          <WarReadinessCard plan={warReadinessPlan} />
         </div>
 
         {/* Cooldowns & Travel */}

@@ -10,11 +10,27 @@ export interface TornBasic {
   image?: string;
 }
 
+// `states` carries hospital/jail *release* timestamps (unix seconds, 0 when
+// not applicable) — the only place the API exposes exact release times. We
+// surface these so War Readiness can forecast "will this clear before war
+// starts?" instead of guessing.
+export interface TornProfileStates {
+  hospital_timestamp?: number;
+  jail_timestamp?: number;
+}
+
+export interface TornProfileFaction {
+  faction_id?: number;
+  faction_name?: string;
+}
+
 export interface TornProfile {
   status?: string;
   rank?: string;
   rankposition?: number;
   life?: { current?: number; maximum?: number };
+  faction?: TornProfileFaction;
+  states?: TornProfileStates;
 }
 
 export interface TornVitalBar {
@@ -155,6 +171,13 @@ export interface CharacterOverview {
   battleStatsTotal?: number;
   points: number;
   merits: number;
+  // Unix seconds when hospital/jail releases — undefined when not applicable
+  // (or when the API reports 0). The only place exact release times are
+  // exposed; used by War Readiness to forecast whether a stay clears before
+  // war starts instead of guessing.
+  hospitalUntil?: number;
+  jailUntil?: number;
+  factionId?: number;
 }
 
 export interface FinancialSnapshot {
@@ -237,6 +260,20 @@ export interface SnapshotPayload {
   status?: TornCharacterStatus;
   cooldowns?: SnapshotCooldowns;
   watchedInventory: Record<string, number>;
+}
+
+// Best-effort ranked war window read from `v2/faction/wars`. At the time this
+// was written, Howler's Haven had no scheduled ranked war (`wars.ranked` was
+// `null`), so we couldn't observe a populated example live — `startMs`/`endMs`
+// are read defensively from whichever shape Torn returns when one exists, and
+// `source` always reflects whether we actually got usable data from the API.
+export interface RankedWarWindow {
+  startMs: number;
+  endMs?: number;
+}
+
+export interface FactionWarStatus {
+  rankedWar?: RankedWarWindow;
 }
 
 export type TornAccessStatus = "ok" | "denied" | "unavailable" | "error";

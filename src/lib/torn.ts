@@ -12,6 +12,8 @@ import type {
   FinancialSnapshot,
   CooldownEntry,
   CooldownState,
+  FactionWarStatus,
+  RankedWarWindow,
 } from "./torn-types";
 
 const TORN_API_BASE = "https://api.torn.com";
@@ -188,6 +190,59 @@ async function fetchEnlistedCarsV2(): Promise<SelectionFetchResult> {
   return { data: json, access: { selection: "enlistedcars", label: selectionLabel("enlistedcars"), status: "ok" } };
 }
 
+// Reads a ranked-war start/end window from whatever shape `wars.ranked`
+// returns. Howler's Haven has no scheduled ranked war right now (`ranked` is
+// `null`), so we've never observed a populated example — Torn's v2 schema may
+// nest timing under a `war` object or expose it directly on `ranked` itself.
+// We check both and return `undefined` for anything we don't recognize,
+// rather than guess — callers fall back to the manual Settings value when
+// this comes back empty.
+function extractRankedWarWindow(ranked: unknown): RankedWarWindow | undefined {
+  if (!ranked || typeof ranked !== "object") return undefined;
+  const root = ranked as Record<string, unknown>;
+  const candidate = (root.war && typeof root.war === "object" ? root.war : root) as Record<string, unknown>;
+
+  const start = typeof candidate.start === "number" ? candidate.start : undefined;
+  if (start === undefined) return undefined;
+
+  const end = typeof candidate.end === "number" ? candidate.end : undefined;
+  return { startMs: start * 1000, endMs: end !== undefined ? end * 1000 : undefined };
+}
+
+async function fetchFactionWarStatus(): Promise<FactionWarStatus> {
+  if (!TORN_API_KEY) {
+    throw new Error("Missing TORN_API_KEY in environment.");
+  }
+
+  const url = `${TORN_API_BASE}/v2/faction/wars?key=${encodeURIComponent(TORN_API_KEY)}`;
+  const response = await fetch(url, {
+    next: { revalidate: 300 },
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    return {};
+  }
+
+  const json = (await response.json()) as Record<string, unknown> & {
+    error?: { code: number; error: string };
+    wars?: { ranked?: unknown };
+  };
+
+  if (json.error) {
+    console.warn("[Torn API] faction/wars (v2) unavailable:", json.error);
+    return {};
+  }
+
+  return { rankedWar: extractRankedWarWindow(json.wars?.ranked) };
+}
+
+// Cached separately (5 min) from the main user-data bundle — war scheduling
+// changes far less often than vitals/cooldowns, and this is its own request.
+export async function getFactionWarStatus(): Promise<FactionWarStatus> {
+  return cached<FactionWarStatus>("torn:faction:wars", 300, fetchFactionWarStatus);
+}
+
 async function fetchTornMerged(selections: string[], includeEnlistedCars: boolean): Promise<TornDataResult> {
   const fetches: Promise<SelectionFetchResult>[] = selections.map(fetchTornSelection);
   if (includeEnlistedCars) fetches.push(fetchEnlistedCarsV2());
@@ -233,6 +288,7 @@ function sumMerits(merits?: TornUserData["merits"]): number {
 
 export function mapCharacterOverview(data: TornUserData): CharacterOverview {
   const bars = data.bars;
+  const states = data.profile?.states;
   return {
     name: data.basic?.name ?? "Unknown",
     playerID: data.basic?.player_id ?? 0,
@@ -246,6 +302,9 @@ export function mapCharacterOverview(data: TornUserData): CharacterOverview {
     battleStatsTotal: data.battlestats?.total,
     points: data.money?.points ?? 0,
     merits: sumMerits(data.merits),
+    hospitalUntil: states?.hospital_timestamp ? states.hospital_timestamp : undefined,
+    jailUntil: states?.jail_timestamp ? states.jail_timestamp : undefined,
+    factionId: data.profile?.faction?.faction_id,
   };
 }
 

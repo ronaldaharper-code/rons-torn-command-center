@@ -1,6 +1,7 @@
 import { inventoryQuantity } from "./torn";
 import { buildJumpPlan } from "./jumpPlanner";
 import type { JumpPlan } from "./jumpPlanner";
+import type { WarReadinessPlan } from "./warReadiness";
 import type {
   CharacterOverview,
   CooldownEntry,
@@ -38,7 +39,7 @@ export interface AdvisorInput {
   bank?: unknown;
   equipment?: TornEquipmentItem[];
   enlistedcars?: TornEnlistedCar[];
-  warReadiness?: unknown;
+  warReadiness?: WarReadinessPlan;
   properties?: unknown;
   snapshots?: unknown;
 }
@@ -347,8 +348,74 @@ function garageRecommendations(): Recommendation[] {
   return [];
 }
 
-function warReadinessRecommendations(): Recommendation[] {
-  return [];
+// Translates the War Readiness plan into "what should Shenzy do next"
+// guidance: the live countdown, anything actively blocking a fight, the
+// concrete prep actions, and (when it's actionable) Vicodin timing — kept
+// conservative throughout, matching `buildWarReadinessPlan`'s "warn rather
+// than overpromise" stance.
+function warReadinessRecommendations(plan?: WarReadinessPlan): Recommendation[] {
+  if (!plan) return [];
+
+  const recommendations: Recommendation[] = [];
+
+  if (plan.warTime.startMs === undefined) {
+    recommendations.push({
+      priority: "low",
+      title: "Set your ranked war start time",
+      explanation: "Torn isn't reporting a scheduled ranked war for your faction, and no manual time is set — the War Readiness Countdown can't forecast anything without one.",
+      recommendedAction: "Add a ranked war start time in Settings to unlock the countdown, readiness forecast, and Vicodin timing guidance.",
+      relatedModule: "war-readiness",
+      confidenceScore: 0.5,
+    });
+    return recommendations;
+  }
+
+  recommendations.push({
+    priority: plan.score < 50 ? "critical" : plan.score < 80 ? "high" : "medium",
+    title: `War starts in ${plan.warTime.timeUntil} — ${plan.readyNow ? "ready now" : "not ready yet"}`,
+    explanation: plan.summary,
+    recommendedAction: plan.readyNow
+      ? "Keep your readiness score up — recheck the countdown as war start gets closer."
+      : "Work through the War Readiness Countdown's blocking issues before war begins.",
+    relatedModule: "war-readiness",
+    confidenceScore: 0.7,
+  });
+
+  for (const issue of plan.blockingIssues) {
+    if (issue.severity === "medium") continue;
+    recommendations.push({
+      priority: issue.severity === "critical" ? "critical" : "high",
+      title: `Not war ready: ${issue.label.toLowerCase()}`,
+      explanation: issue.detail,
+      recommendedAction: "Resolve this before war starts — it's actively blocking you from fighting.",
+      relatedModule: "war-readiness",
+      confidenceScore: 0.7,
+    });
+  }
+
+  for (const action of plan.recommendedActions) {
+    recommendations.push({
+      priority: "medium",
+      title: action.label,
+      explanation: action.detail,
+      recommendedAction: action.label,
+      relatedModule: "war-readiness",
+      confidenceScore: 0.55,
+    });
+  }
+
+  if (plan.vicodinGuidance.verdict !== "no-vicodin" && plan.vicodinGuidance.verdict !== "unknown") {
+    recommendations.push({
+      priority: plan.vicodinGuidance.verdict === "take-now" ? "medium" : "low",
+      title: plan.vicodinGuidance.headline,
+      explanation: plan.vicodinGuidance.detail,
+      recommendedAction: plan.vicodinGuidance.headline,
+      relatedModule: "war-readiness",
+      confidenceScore: 0.5,
+    });
+  }
+
+  return recommendations;
 }
 
 function propertyRecommendations(): Recommendation[] {
@@ -377,7 +444,7 @@ export function buildRecommendations(input: AdvisorInput): Recommendation[] {
     ...bankRecommendations(),
     ...gearRecommendations(),
     ...garageRecommendations(),
-    ...warReadinessRecommendations(),
+    ...warReadinessRecommendations(input.warReadiness),
     ...propertyRecommendations(),
     ...snapshotTrendRecommendations(),
   ];

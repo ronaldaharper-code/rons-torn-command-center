@@ -2,9 +2,11 @@ import { cookies } from "next/headers";
 import { SettingsForm } from "@/components/SettingsForm";
 import ConsumableUsagePanel from "@/components/ConsumableUsagePanel";
 import SnapshotHistoryPanel from "@/components/SnapshotHistoryPanel";
+import { WarReadinessSettingsForm } from "@/components/WarReadinessSettingsForm";
 import { prisma } from "@/lib/db";
 import { DEFAULT_OWNER_KEY } from "@/lib/owner";
 import { getRecentSnapshots, estimateConsumableUsage, compareAgainstWindow } from "@/lib/snapshot";
+import { getWarReadinessSettings } from "@/lib/settings";
 import type { WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
 
 const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
@@ -44,6 +46,7 @@ export default async function SettingsPage() {
   const recentSnapshots = await getRecentSnapshots(60);
   const usageEstimates = estimateConsumableUsage(items, recentSnapshots);
   const weeklyTrend = compareAgainstWindow(recentSnapshots);
+  const warReadinessSettings = await getWarReadinessSettings();
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.08),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_28%),#03050c] px-4 py-8 text-white sm:px-6 lg:px-10">
@@ -53,6 +56,13 @@ export default async function SettingsPage() {
           <p className="mt-3 max-w-2xl text-slate-400">Manage your consumables watchlist: what to track, how low it can go before you get an alert, and whether alerts are active.</p>
         </div>
         <SettingsForm initialItems={items} />
+        <div className="mt-8">
+          <WarReadinessSettingsForm
+            initialPreferredTimeZone={warReadinessSettings.preferredTimeZone}
+            initialManualRankedWarStart={warReadinessSettings.manualRankedWarStart}
+            initialVicodinCooldownAssumptionMinutes={warReadinessSettings.vicodinCooldownAssumptionMinutes}
+          />
+        </div>
         <div className="mt-8">
           <ConsumableUsagePanel estimates={usageEstimates} />
         </div>
