@@ -41,6 +41,7 @@ export function buildSnapshotPayload(
     bank: summary.financial.bank,
     points: summary.character.points,
     merits: summary.character.merits,
+    battleStatsTotal: summary.character.battleStatsTotal,
     energy: summary.character.energy,
     happy: summary.character.happy,
     nerve: summary.character.nerve,

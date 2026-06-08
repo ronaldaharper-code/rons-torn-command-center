@@ -17,21 +17,24 @@ const ROOT = join(__dirname, "..");
 const ENV_PATH = join(ROOT, ".env.local");
 const OUTPUT_PATH = join(ROOT, "docs", "API_VERIFICATION_RESULTS.md");
 
+// Selection names reflect the *current* Torn API. `stats`/`weapons`/`armor`
+// were renamed to `battlestats`/`equipment`; `chain` is faction-scoped (not
+// exposed via `/user/` to a personal key); `enlistedcars` requires the v2
+// API (the v1 `/user/` endpoint returns "code 23: only available in v2").
 const SELECTIONS = [
   "basic",
   "profile",
-  "stats",
+  "battlestats",
   "travel",
   "networth",
   "inventory",
   "properties",
-  "weapons",
-  "armor",
+  "equipment",
   "crimes",
-  "chain",
   "cooldowns",
-  "enlistedcars",
 ];
+
+const V2_SELECTIONS = ["enlistedcars"];
 
 function loadEnvLocal(path) {
   const raw = readFileSync(path, "utf8");
@@ -99,6 +102,51 @@ async function testSelection(key, selection) {
   };
 }
 
+async function testV2Selection(key, selection) {
+  const url = `https://api.torn.com/v2/user/${encodeURIComponent(selection)}?key=${encodeURIComponent(key)}`;
+
+  let json;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      return {
+        selection: `${selection} (v2)`,
+        ok: false,
+        code: null,
+        message: `HTTP ${response.status}`,
+        fields: [],
+      };
+    }
+    json = await response.json();
+  } catch (error) {
+    return {
+      selection: `${selection} (v2)`,
+      ok: false,
+      code: null,
+      message: `Request error: ${error.message}`,
+      fields: [],
+    };
+  }
+
+  if (json.error) {
+    return {
+      selection: `${selection} (v2)`,
+      ok: false,
+      code: json.error.code,
+      message: json.error.error,
+      fields: [],
+    };
+  }
+
+  return {
+    selection: `${selection} (v2)`,
+    ok: true,
+    code: null,
+    message: "",
+    fields: Object.keys(json),
+  };
+}
+
 function renderMarkdown(results, testedAt) {
   const lines = [];
   lines.push("# Torn API verification results");
@@ -148,14 +196,21 @@ async function main() {
     return;
   }
 
-  console.log(`Testing ${SELECTIONS.length} Torn API selections individually (key not shown)...`);
+  const total = SELECTIONS.length + V2_SELECTIONS.length;
+  console.log(`Testing ${total} Torn API selections individually (key not shown)...`);
 
   const results = [];
   for (const selection of SELECTIONS) {
     const result = await testSelection(key, selection);
     results.push(result);
     const status = result.ok ? "OK" : `FAIL (code ${result.code ?? "?"}: ${result.message})`;
-    console.log(`  ${selection.padEnd(14)} ${status}`);
+    console.log(`  ${selection.padEnd(18)} ${status}`);
+  }
+  for (const selection of V2_SELECTIONS) {
+    const result = await testV2Selection(key, selection);
+    results.push(result);
+    const status = result.ok ? "OK" : `FAIL (code ${result.code ?? "?"}: ${result.message})`;
+    console.log(`  ${result.selection.padEnd(18)} ${status}`);
   }
 
   const testedAt = new Date().toISOString();

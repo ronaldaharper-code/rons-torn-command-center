@@ -5,8 +5,8 @@ import type {
   ConsumableUsageEstimate,
   TornCooldowns,
   TornItemInventory,
-  TornGear,
-  TornRaceGarage,
+  TornEquipmentItem,
+  TornEnlistedCar,
   WatchedItem,
 } from "./torn-types";
 
@@ -32,8 +32,8 @@ export interface AdvisorInput {
   // contributes no recommendations, but keeping them in the input shape
   // means the engine itself won't need to change when they're filled in.
   bank?: unknown;
-  gear?: TornGear;
-  garage?: TornRaceGarage;
+  equipment?: TornEquipmentItem[];
+  enlistedcars?: TornEnlistedCar[];
   warReadiness?: unknown;
   properties?: unknown;
   snapshots?: unknown;

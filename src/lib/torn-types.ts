@@ -21,11 +21,11 @@ export interface TornProfile {
   happy?: { current?: number; maximum?: number };
 }
 
-export interface TornStats {
-  strength?: { current?: number; maximum?: number };
-  defense?: { current?: number; maximum?: number };
-  speed?: { current?: number; maximum?: number };
-  dexterity?: { current?: number; maximum?: number };
+export interface TornBattleStats {
+  strength?: number;
+  defense?: number;
+  speed?: number;
+  dexterity?: number;
   total?: number;
 }
 
@@ -58,75 +58,59 @@ export interface TornCooldowns {
   booster?: number;
 }
 
-export interface TornArmor {
+export interface TornEquipmentItem {
+  ID?: number;
+  UID?: number;
   name?: string;
-  damage?: number;
-  armor?: number;
-  cost?: number;
-  ability?: string;
-  condition?: number;
-}
-
-export interface TornWeapon {
-  name?: string;
-  damage?: number;
-  accuracy?: number;
   type?: string;
-  condition?: number;
-  cost?: number;
+  equipped?: number;
+  market_price?: number;
+  quantity?: number;
 }
 
-export interface TornGear {
-  head?: TornArmor;
-  body?: TornArmor;
-  hand?: TornArmor;
-  foot?: TornArmor;
-  primary?: TornWeapon;
+export interface TornEnlistedCar {
+  id?: number;
+  car_item_id?: number;
+  car_item_name?: string;
+  car_name?: string | null;
+  top_speed?: number;
+  acceleration?: number;
+  braking?: number;
+  handling?: number;
+  safety?: number;
+  dirt?: number;
+  tarmac?: number;
+  class?: string;
+  worth?: number;
+  races_entered?: number;
+  races_won?: number;
 }
 
-export interface TornRaceGarage {
-  [id: string]: {
-    name?: string;
-    model?: string;
-    color?: string;
-    condition?: number;
-    performance?: number;
-  };
-}
-
-export interface TornCrimes {
-  [id: string]: {
-    crime_id?: number;
-    crime_name?: string;
-    status?: string;
-    time_started?: number;
-    time_completed?: number;
-  };
-}
-
-export interface TornChain {
-  current?: number;
-  max?: number;
-  timeout?: number;
-  modifiers?: { [key: string]: number };
+export interface TornCriminalRecord {
+  vandalism?: number;
+  theft?: number;
+  counterfeiting?: number;
+  fraud?: number;
+  illicitservices?: number;
+  cybercrime?: number;
+  extortion?: number;
+  illegalproduction?: number;
+  total?: number;
 }
 
 export interface TornUserData {
   basic?: TornBasic;
   profile?: TornProfile;
-  stats?: TornStats;
+  battlestats?: TornBattleStats;
   travel?: TornTravel;
   networth?: TornNetworth;
   inventory?: TornItemInventory;
   cooldowns?: TornCooldowns;
   items?: Record<string, any>;
   properties?: Record<string, any>;
-  weapons?: Record<string, TornWeapon>;
-  armor?: Record<string, TornArmor>;
-  gear?: TornGear;
-  garage?: TornRaceGarage;
-  crimes?: TornCrimes;
-  chain?: TornChain;
+  equipment?: TornEquipmentItem[];
+  enlistedcars?: TornEnlistedCar[];
+  criminalrecord?: TornCriminalRecord;
   news?: Record<string, any>;
   timestamp?: number;
 }
@@ -141,7 +125,7 @@ export interface CharacterOverview {
   nerve: { current: number; maximum: number };
   happy: { current: number; maximum: number };
   status: TornCharacterStatus;
-  chain: { current: number; max: number };
+  battleStatsTotal?: number;
   points: number;
   merits: number;
 }
@@ -159,10 +143,9 @@ export interface FinancialSnapshot {
 export interface AdminSummary {
   character: CharacterOverview;
   financial: FinancialSnapshot;
-  gear?: TornGear;
-  garage?: TornRaceGarage;
-  crimes?: TornCrimes;
-  chain?: TornChain;
+  equipment?: TornEquipmentItem[];
+  enlistedcars?: TornEnlistedCar[];
+  criminalRecord?: TornCriminalRecord;
   cooldowns?: TornCooldowns;
   lastSynced: string;
 }

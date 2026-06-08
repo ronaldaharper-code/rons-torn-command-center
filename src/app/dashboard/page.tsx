@@ -71,8 +71,8 @@ export default async function DashboardPage() {
     inventory: data.inventory,
     watchlist,
     usageEstimates,
-    gear: summary.gear,
-    garage: summary.garage,
+    equipment: summary.equipment,
+    enlistedcars: summary.enlistedcars,
     snapshots: recentSnapshots,
   });
 

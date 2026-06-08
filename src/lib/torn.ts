@@ -19,38 +19,38 @@ const TORN_API_KEY = process.env.TORN_API_KEY;
 
 // IMPORTANT: the Torn `/user/` endpoint rejects certain selection
 // *combinations* with a generic "Wrong fields" (code 4) error — independent
-// of the key's access level. For example `stats` cannot be combined with
-// `profile`/`travel`/`networth`, and `weapons`/`armor` conflict with
-// `inventory`/`properties`/`networth`. Rather than maintain a brittle map of
-// which selections may be combined, we fetch each selection in its own
-// request (cached + parallelized) and merge the results. This also gives us
-// clean per-selection access reporting for the UI (see TORN_API_FIELD_MAP.md).
-const PUBLIC_SELECTIONS_LIST = ["basic", "profile", "stats", "travel", "networth"];
+// of the key's access level. Rather than maintain a brittle map of which
+// selections may be combined, we fetch each selection in its own request
+// (cached + parallelized) and merge the results. This also gives us clean
+// per-selection access reporting for the UI (see TORN_API_FIELD_MAP.md).
+//
+// Selection names below reflect the *current* Torn API, not the legacy v1
+// names this app originally guessed at — `stats`/`weapons`/`armor` were
+// renamed to `battlestats`/`equipment`, and `chain` is a faction-level
+// selection (not exposed via `/user/` to a personal key, regardless of
+// access level). `enlistedcars` is fetched separately via the v2 API — the
+// v1 `/user/` endpoint returns "code 23: only available in API v2" for it.
+const PUBLIC_SELECTIONS_LIST = ["basic", "profile", "battlestats", "travel", "networth"];
 const ADMIN_SELECTIONS_LIST = [
   ...PUBLIC_SELECTIONS_LIST,
   "inventory",
   "properties",
-  "weapons",
-  "armor",
-  "enlistedcars",
+  "equipment",
   "crimes",
-  "chain",
   "cooldowns",
 ];
 
 const SELECTION_LABELS: Record<string, string> = {
   basic: "Basic profile",
   profile: "Profile & vitals",
-  stats: "Battle stats",
+  battlestats: "Battle stats",
   travel: "Travel status",
   networth: "Net worth",
   inventory: "Inventory",
   properties: "Properties",
-  weapons: "Weapons",
-  armor: "Armor",
+  equipment: "Weapons & armor",
+  crimes: "Criminal record",
   enlistedcars: "Garage / racing",
-  crimes: "Crimes",
-  chain: "Faction chain",
   cooldowns: "Cooldowns",
 };
 
@@ -128,22 +128,63 @@ async function fetchTornSelection(selection: string): Promise<SelectionFetchResu
   return { data: json, access: { selection, label: selectionLabel(selection), status: "ok" } };
 }
 
-async function fetchTornMerged(selections: string[]): Promise<TornDataResult> {
-  const results = await Promise.all(selections.map(fetchTornSelection));
-  const data = Object.assign({}, ...results.map((result) => result.data)) as TornUserData;
-  // `enlistedcars` is the current API selection name for what this app models as `garage`.
-  if ("enlistedcars" in data) {
-    (data as Record<string, unknown>).garage = (data as Record<string, unknown>).enlistedcars;
+// `enlistedcars` returns "code 23: This selection is only available in API v2"
+// from the legacy `/user/?selections=` endpoint — it has to be fetched from
+// the v2 API, which uses a different URL shape and response envelope
+// (`{ enlistedcars: [...] }` with no `error` wrapper on the v1 shape).
+async function fetchEnlistedCarsV2(): Promise<SelectionFetchResult> {
+  if (!TORN_API_KEY) {
+    throw new Error("Missing TORN_API_KEY in environment.");
   }
+
+  const url = `${TORN_API_BASE}/v2/user/enlistedcars?key=${encodeURIComponent(TORN_API_KEY)}`;
+  const response = await fetch(url, {
+    next: { revalidate: 90 },
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    console.error(`[Torn API Error] Status: ${response.status}, Body: ${text}`);
+    return {
+      data: {},
+      access: { selection: "enlistedcars", label: selectionLabel("enlistedcars"), status: "error", message: `Request failed (${response.status})` },
+    };
+  }
+
+  const json = (await response.json()) as Record<string, unknown> & { error?: { code: number; error: string } };
+
+  if (json.error) {
+    console.warn('[Torn API] Selection "enlistedcars" (v2) unavailable:', json.error);
+    return {
+      data: {},
+      access: {
+        selection: "enlistedcars",
+        label: selectionLabel("enlistedcars"),
+        status: statusForErrorCode(json.error.code),
+        message: json.error.error,
+      },
+    };
+  }
+
+  return { data: json, access: { selection: "enlistedcars", label: selectionLabel("enlistedcars"), status: "ok" } };
+}
+
+async function fetchTornMerged(selections: string[], includeEnlistedCars: boolean): Promise<TornDataResult> {
+  const fetches: Promise<SelectionFetchResult>[] = selections.map(fetchTornSelection);
+  if (includeEnlistedCars) fetches.push(fetchEnlistedCarsV2());
+
+  const results = await Promise.all(fetches);
+  const data = Object.assign({}, ...results.map((result) => result.data)) as TornUserData;
   return { data, access: results.map((result) => result.access) };
 }
 
 export async function getTornUserData(): Promise<TornDataResult> {
-  return cached<TornDataResult>("torn:user:data", 120, () => fetchTornMerged(ADMIN_SELECTIONS_LIST));
+  return cached<TornDataResult>("torn:user:data", 120, () => fetchTornMerged(ADMIN_SELECTIONS_LIST, true));
 }
 
 export async function getTornPublicData(): Promise<TornDataResult> {
-  return cached<TornDataResult>("torn:user:public", 90, () => fetchTornMerged(PUBLIC_SELECTIONS_LIST));
+  return cached<TornDataResult>("torn:user:public", 90, () => fetchTornMerged(PUBLIC_SELECTIONS_LIST, false));
 }
 
 function buildInventoryMap(inventory?: TornUserData["inventory"], items?: TornUserData["items"]): Record<string, number> {
@@ -183,10 +224,7 @@ export function mapCharacterOverview(data: TornUserData): CharacterOverview {
     nerve: extractStat(profile, "nerve"),
     happy: extractStat(profile, "happy"),
     status: parseStatus(data),
-    chain: {
-      current: (data.chain as any)?.current ?? 0,
-      max: (data.chain as any)?.max ?? 0,
-    },
+    battleStatsTotal: data.battlestats?.total,
     points: profile.points ?? 0,
     merits: profile.merits ?? 0,
   };
@@ -222,11 +260,10 @@ export function mapAdminSummary(data: TornUserData): AdminSummary {
   return {
     character: mapCharacterOverview(data),
     financial: mapFinancialSnapshot(data),
-    gear: (data as any).gear,
-    garage: data.garage,
-    crimes: data.crimes,
-    chain: (data.chain as any),
-    cooldowns: (data as any).cooldowns,
+    equipment: data.equipment,
+    enlistedcars: data.enlistedcars,
+    criminalRecord: data.criminalrecord,
+    cooldowns: data.cooldowns,
     lastSynced: formatTimestamp(Date.now()),
   };
 }

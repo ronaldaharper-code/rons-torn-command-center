@@ -60,8 +60,10 @@ export default function CharacterOverviewCard({ data, profileImage }: Props) {
               <p className="text-white font-semibold">{data.merits}</p>
             </div>
             <div className="bg-slate-900/50 rounded p-2">
-              <p className="text-slate-400">Chain</p>
-              <p className="text-white font-semibold">{data.chain.current}/{data.chain.max}</p>
+              <p className="text-slate-400">Battle Stats</p>
+              <p className="text-white font-semibold">
+                {data.battleStatsTotal != null ? data.battleStatsTotal.toLocaleString() : "—"}
+              </p>
             </div>
           </div>
         </div>
