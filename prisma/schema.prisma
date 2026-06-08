@@ -8,21 +8,28 @@ datasource db {
 }
 
 model Setting {
-  id    Int    @id @default(autoincrement())
-  key   String @unique
-  value String
+  id       Int    @id @default(autoincrement())
+  ownerKey String @default("ron")
+  key      String
+  value    String
+
+  @@unique([ownerKey, key])
 }
 
 model ItemWatch {
   id           Int     @id @default(autoincrement())
-  itemName     String  @unique
+  ownerKey     String  @default("ron")
+  itemName     String
   category     String  @default("consumable")
   minTarget    Int     @default(0)
   alertEnabled Boolean @default(true)
+
+  @@unique([ownerKey, itemName])
 }
 
 model Snapshot {
   id        Int      @id @default(autoincrement())
+  ownerKey  String   @default("ron")
   type      String
   data      String
   createdAt DateTime @default(now())

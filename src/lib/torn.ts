@@ -170,15 +170,3 @@ export function mapAdminSummary(data: TornUserData): AdminSummary {
     lastSynced: formatTimestamp(Date.now()),
   };
 }
-
-export function getPriorityMessages(summary: AdminSummary) {
-  const messages: string[] = [];
-  const charData = summary.character;
-  if (charData.happy.current < 70) messages.push("Focus on happy items and jump preparation.");
-  if (charData.energy.current < 50) messages.push("Consider using an energy item or training later.");
-  if (summary.financial.cash < 2_000_000) messages.push("Cash is low for a $2B bank plan.");
-  if (charData.status === "hospital") messages.push("Recover from hospital before training.");
-  if (charData.status === "jail") messages.push("Wait for jail or rehab clearance.");
-  if (!messages.length) messages.push("Overall status looks stable. Maintain your current plan.");
-  return messages;
-}

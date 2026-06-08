@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { SettingsForm } from "@/components/SettingsForm";
 import { prisma } from "@/lib/db";
+import { DEFAULT_OWNER_KEY } from "@/lib/owner";
 import type { WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
 
 const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
@@ -23,7 +24,10 @@ export default async function SettingsPage() {
     );
   }
 
-  const storedItems = await prisma.itemWatch.findMany({ orderBy: { itemName: "asc" } });
+  const storedItems = await prisma.itemWatch.findMany({
+    where: { ownerKey: DEFAULT_OWNER_KEY },
+    orderBy: { itemName: "asc" },
+  });
   const items: WatchedItem[] = storedItems.map((row) => ({
     id: row.id,
     itemName: row.itemName,

@@ -1,10 +1,16 @@
 import { cookies } from "next/headers";
-import { AdminDashboard } from "@/components/AdminDashboard";
 import { AdminLoginForm } from "@/components/AdminLoginForm";
 import SidebarNav from "@/components/SidebarNav";
 import CharacterOverviewCard from "@/components/CharacterOverviewCard";
 import NetWorthCard from "@/components/NetWorthCard";
+import PrioritiesCard from "@/components/PrioritiesCard";
 import { getTornUserData, mapAdminSummary } from "@/lib/torn";
+import { buildRecommendations } from "@/lib/advisor";
+import { prisma } from "@/lib/db";
+import { DEFAULT_OWNER_KEY } from "@/lib/owner";
+import type { WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
+
+const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
 
 async function isAuthenticated() {
   return (await cookies()).get("ron_dashboard_auth")?.value === "1";
@@ -35,6 +41,29 @@ export default async function AdminPage() {
 
   const summary = mapAdminSummary(data);
 
+  const storedWatchlist = await prisma.itemWatch.findMany({
+    where: { ownerKey: DEFAULT_OWNER_KEY },
+    orderBy: { itemName: "asc" },
+  });
+  const watchlist: WatchedItem[] = storedWatchlist.map((row) => ({
+    id: row.id,
+    itemName: row.itemName,
+    category: VALID_CATEGORIES.includes(row.category as WatchedItemCategory)
+      ? (row.category as WatchedItemCategory)
+      : "other",
+    minTarget: row.minTarget,
+    alertEnabled: row.alertEnabled,
+  }));
+
+  const recommendations = buildRecommendations({
+    character: summary.character,
+    cooldowns: summary.cooldowns,
+    inventory: data.inventory,
+    watchlist,
+    gear: summary.gear,
+    garage: summary.garage,
+  });
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Sidebar */}
@@ -46,7 +75,8 @@ export default async function AdminPage() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold text-white">
-              <span className="text-amber-400">👑</span> Private Command Center
+              <span className="text-amber-400">👑</span>{" "}
+              {summary.character.name !== "Unknown" ? `${summary.character.name}'s Command Center` : "Private Command Center"}
             </h1>
             <p className="text-slate-400 mt-1">
               Last synced: {summary.lastSynced}
@@ -56,6 +86,15 @@ export default async function AdminPage() {
             <p className="text-sm text-slate-400">Readiness</p>
             <p className="text-2xl font-bold text-green-400">✓ Ready</p>
           </div>
+        </div>
+
+        {/* Ron's Priorities Today */}
+        <div className="mb-8">
+          <PrioritiesCard
+            recommendations={recommendations}
+            characterName={summary.character.name !== "Unknown" ? summary.character.name : undefined}
+            maxItems={5}
+          />
         </div>
 
         {/* Character Overview */}
@@ -69,19 +108,6 @@ export default async function AdminPage() {
         {/* Net Worth */}
         <div className="mb-8">
           <NetWorthCard data={summary.financial} />
-        </div>
-
-        {/* Coming Soon Sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-white mb-4">Jump Planner</h3>
-            <p className="text-slate-400 text-sm">Coming soon...</p>
-          </div>
-
-          <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-white mb-4">Crimes & Cooldowns</h3>
-            <p className="text-slate-400 text-sm">Coming soon...</p>
-          </div>
         </div>
       </main>
     </div>

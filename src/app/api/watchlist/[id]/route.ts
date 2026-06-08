@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
+import { DEFAULT_OWNER_KEY } from "@/lib/owner";
 import type { WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
 
 const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
@@ -34,7 +35,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const existing = await prisma.itemWatch.findUnique({ where: { id } });
-  if (!existing) {
+  if (!existing || existing.ownerKey !== DEFAULT_OWNER_KEY) {
     return NextResponse.json({ message: "Watched item not found" }, { status: 404 });
   }
 
@@ -76,7 +77,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   }
 
   const existing = await prisma.itemWatch.findUnique({ where: { id } });
-  if (!existing) {
+  if (!existing || existing.ownerKey !== DEFAULT_OWNER_KEY) {
     return NextResponse.json({ message: "Watched item not found" }, { status: 404 });
   }
 

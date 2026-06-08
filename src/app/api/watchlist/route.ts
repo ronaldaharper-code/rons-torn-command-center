@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
+import { DEFAULT_OWNER_KEY } from "@/lib/owner";
 import type { WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
 
 const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
@@ -27,7 +28,10 @@ export async function GET() {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const items = await prisma.itemWatch.findMany({ orderBy: { itemName: "asc" } });
+  const items = await prisma.itemWatch.findMany({
+    where: { ownerKey: DEFAULT_OWNER_KEY },
+    orderBy: { itemName: "asc" },
+  });
   return NextResponse.json({ items: items.map(toWatchedItem) });
 }
 
@@ -46,13 +50,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "itemName is required" }, { status: 400 });
   }
 
-  const existing = await prisma.itemWatch.findUnique({ where: { itemName } });
+  const existing = await prisma.itemWatch.findUnique({
+    where: { ownerKey_itemName: { ownerKey: DEFAULT_OWNER_KEY, itemName } },
+  });
   if (existing) {
     return NextResponse.json({ message: "This item is already on the watchlist" }, { status: 409 });
   }
 
   const created = await prisma.itemWatch.create({
-    data: { itemName, category, minTarget, alertEnabled },
+    data: { ownerKey: DEFAULT_OWNER_KEY, itemName, category, minTarget, alertEnabled },
   });
 
   return NextResponse.json({ item: toWatchedItem(created) }, { status: 201 });
