@@ -16,6 +16,8 @@ import type {
   RankedWarWindow,
   EquipmentDetails,
   TornEquipmentDetail,
+  PropertyDetails,
+  TornPropertyV2,
 } from "./torn-types";
 
 const TORN_API_BASE = "https://api.torn.com";
@@ -280,6 +282,47 @@ async function fetchEquipmentDetails(): Promise<EquipmentDetails> {
 // Cached separately (5 min) — gear changes far less often than vitals.
 export async function getEquipmentDetails(): Promise<EquipmentDetails> {
   return cached<EquipmentDetails>("torn:user:equipment-details", 300, fetchEquipmentDetails);
+}
+
+// `selections=properties` (the v1 bundle) returns a flat `{ [id]: {...} }`
+// map with a different field set (`property_type`, `property` as a bare
+// name string, `rented: { user_id, days_left, ... }`). `v2/user/properties`
+// is far richer — named owner/property objects, a `status` enum
+// (`in_use`/`rented`/`for_rent`/`none`), and for rented properties Shenzy
+// owns: `rental_period_remaining` (exact days left), `rented_by`, and
+// `lease_extension`. The Property Advisor needs that rental-timing detail,
+// so it fetches v2 separately rather than reshaping the v1 bundle.
+async function fetchPropertyDetails(): Promise<PropertyDetails> {
+  if (!TORN_API_KEY) {
+    throw new Error("Missing TORN_API_KEY in environment.");
+  }
+
+  const url = `${TORN_API_BASE}/v2/user/properties?key=${encodeURIComponent(TORN_API_KEY)}`;
+  const response = await fetch(url, {
+    next: { revalidate: 300 },
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    return {};
+  }
+
+  const json = (await response.json()) as Record<string, unknown> & {
+    error?: { code: number; error: string };
+    properties?: TornPropertyV2[];
+  };
+
+  if (json.error) {
+    console.warn("[Torn API] user/properties (v2) unavailable:", json.error);
+    return {};
+  }
+
+  return { items: Array.isArray(json.properties) ? json.properties : [] };
+}
+
+// Cached separately (5 min) — property/rental state changes far less often than vitals.
+export async function getPropertyDetails(): Promise<PropertyDetails> {
+  return cached<PropertyDetails>("torn:user:property-details", 300, fetchPropertyDetails);
 }
 
 async function fetchTornMerged(selections: string[], includeEnlistedCars: boolean): Promise<TornDataResult> {

@@ -143,6 +143,63 @@ export interface EquipmentDetails {
   items?: TornEquipmentDetail[];
 }
 
+export interface TornPropertyParty {
+  id?: number;
+  name?: string;
+}
+
+export interface TornPropertyType {
+  id?: number;
+  name?: string;
+}
+
+export interface TornPropertyUpkeep {
+  property?: number;
+  staff?: number;
+}
+
+export interface TornPropertyStaffEntry {
+  type?: string;
+  amount?: number;
+}
+
+export interface TornPropertyLeaseExtension {
+  cost?: number;
+  period?: number;
+  created_at?: number;
+}
+
+// Live shape from `v2/user/properties` — far richer than the v1
+// `selections=properties` bundle (which only returns a flat
+// `{ [id]: { property_type, property: name, ... } }` map with named
+// fields differently shaped). Confirmed live: rented properties Shenzy
+// owns expose `rental_period_remaining` (exact days left) and
+// `lease_extension` (non-null once an extension offer has been queued) —
+// so rental timing guidance can be built on live API data directly rather
+// than guessed or left to manual tracking.
+export interface TornPropertyV2 {
+  id?: number;
+  owner?: TornPropertyParty;
+  property?: TornPropertyType;
+  happy?: number;
+  upkeep?: TornPropertyUpkeep;
+  market_price?: number;
+  modifications?: string[];
+  staff?: TornPropertyStaffEntry[];
+  status?: string;
+  used_by?: TornPropertyParty[];
+  cost?: number;
+  cost_per_day?: number;
+  rental_period?: number;
+  rental_period_remaining?: number;
+  rented_by?: TornPropertyParty;
+  lease_extension?: TornPropertyLeaseExtension | null;
+}
+
+export interface PropertyDetails {
+  items?: TornPropertyV2[];
+}
+
 export interface TornEnlistedCar {
   id?: number;
   car_item_id?: number;

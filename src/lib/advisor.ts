@@ -4,6 +4,7 @@ import type { JumpPlan } from "./jumpPlanner";
 import type { WarReadinessPlan } from "./warReadiness";
 import type { GearAdvisorPlan } from "./gearAdvisor";
 import type { GarageAdvisorPlan } from "./garageAdvisor";
+import type { PropertyAdvisorPlan } from "./propertyAdvisor";
 import type {
   CharacterOverview,
   CooldownEntry,
@@ -44,6 +45,7 @@ export interface AdvisorInput {
   warReadiness?: WarReadinessPlan;
   gearAdvisor?: GearAdvisorPlan;
   garageAdvisor?: GarageAdvisorPlan;
+  propertyAdvisor?: PropertyAdvisorPlan;
   properties?: unknown;
   snapshots?: unknown;
 }
@@ -565,8 +567,109 @@ function warReadinessRecommendations(plan?: WarReadinessPlan): Recommendation[] 
   return recommendations;
 }
 
-function propertyRecommendations(): Recommendation[] {
-  return [];
+// Translates the Property Advisor plan into "what should Shenzy do next"
+// guidance: rental extension timing (only when the API actually reports
+// days remaining — Shenzy's stated preference is offer-at-10-days,
+// urgent-under-5), manual-reminder follow-ups for whatever the API doesn't
+// cover, and an honest note when end-date/renter detail is missing rather
+// than guessed at. Mirrors garageRecommendations()'s conservative shape.
+function propertyRecommendations(plan?: PropertyAdvisorPlan): Recommendation[] {
+  if (!plan) return [];
+
+  if (!plan.propertyDataAvailable) {
+    return [
+      {
+        priority: "low",
+        title: "No property data available",
+        explanation: plan.summary,
+        recommendedAction: "Own or rent a property to start seeing rental and upkeep guidance here.",
+        relatedModule: "properties",
+        confidenceScore: 0.4,
+      },
+    ];
+  }
+
+  const recommendations: Recommendation[] = [];
+
+  for (const alert of plan.rentalAlerts) {
+    if (alert.urgency === "urgent") {
+      recommendations.push({
+        priority: "high",
+        title: `Rental is urgent — under ${plan.urgentReminderDays} days remaining`,
+        explanation: alert.reason,
+        recommendedAction: `Offer ${alert.property.name} an extension now, or plan for the rental to end in ${alert.daysRemaining} day${alert.daysRemaining === 1 ? "" : "s"}.`,
+        relatedModule: "properties",
+        confidenceScore: 0.7,
+      });
+    } else if (alert.urgency === "offer-now") {
+      recommendations.push({
+        priority: "medium",
+        title: `Offer extension now — renter has ${alert.daysRemaining} days remaining`,
+        explanation: alert.reason,
+        recommendedAction: `Reach out to ${alert.property.rental?.renterName ?? "the renter"} about extending the lease on ${alert.property.name}.`,
+        relatedModule: "properties",
+        confidenceScore: 0.65,
+      });
+    } else {
+      const opensIn = alert.daysRemaining - plan.extensionReminderDays;
+      recommendations.push({
+        priority: "low",
+        title: `Rental extension window opens in ${opensIn} day${opensIn === 1 ? "" : "s"}`,
+        explanation: alert.reason,
+        recommendedAction: `No action needed yet — ${alert.property.name} crosses the ${plan.extensionReminderDays}-day extension-offer threshold in ${opensIn} day${opensIn === 1 ? "" : "s"}.`,
+        relatedModule: "properties",
+        confidenceScore: 0.5,
+      });
+    }
+  }
+
+  if (!plan.rentalTimingAvailable && plan.rentedProperties.length > 0) {
+    recommendations.push({
+      priority: "medium",
+      title: "Property data available, but renter/end-date details unavailable from API",
+      explanation: `Shenzy has ${plan.rentedProperties.length} rented propert${plan.rentedProperties.length === 1 ? "y" : "ies"}, but Torn isn't returning rental end-date or renter detail for ${plan.rentedProperties.length === 1 ? "it" : "them"} right now.`,
+      recommendedAction: plan.hasManualReminders
+        ? "Keep manual rental reminders up to date for these properties — they're filling the gap the API leaves."
+        : "Manual rental reminder recommended — add one in Settings with the rental's expected end date so timing isn't missed.",
+      relatedModule: "properties",
+      confidenceScore: 0.45,
+    });
+  }
+
+  for (const alert of plan.manualReminderAlerts) {
+    if (alert.urgency === "overdue" || alert.urgency === "urgent") {
+      recommendations.push({
+        priority: alert.urgency === "overdue" ? "medium" : "high",
+        title: `Manual reminder: ${alert.reminder.propertyLabel} — ${alert.urgency === "overdue" ? "overdue" : "urgent"}`,
+        explanation: alert.reason,
+        recommendedAction: "Review this rental and update or clear the manual reminder once it's handled.",
+        relatedModule: "properties",
+        confidenceScore: 0.5,
+      });
+    } else if (alert.urgency === "offer-now") {
+      recommendations.push({
+        priority: "medium",
+        title: `Manual reminder: offer extension — ${alert.reminder.propertyLabel}`,
+        explanation: alert.reason,
+        recommendedAction: "Reach out about extending this rental based on the manually-tracked end date.",
+        relatedModule: "properties",
+        confidenceScore: 0.45,
+      });
+    }
+  }
+
+  if (recommendations.length === 0) {
+    recommendations.push({
+      priority: "low",
+      title: "Rentals on track",
+      explanation: plan.summary,
+      recommendedAction: `No extension offers needed yet — Shenzy's preferred thresholds (offer at ${plan.extensionReminderDays} days, urgent under ${plan.urgentReminderDays}) aren't currently triggered.`,
+      relatedModule: "properties",
+      confidenceScore: 0.4,
+    });
+  }
+
+  return recommendations;
 }
 
 function snapshotTrendRecommendations(): Recommendation[] {
@@ -592,7 +695,7 @@ export function buildRecommendations(input: AdvisorInput): Recommendation[] {
     ...gearRecommendations(input.gearAdvisor),
     ...garageRecommendations(input.garageAdvisor),
     ...warReadinessRecommendations(input.warReadiness),
-    ...propertyRecommendations(),
+    ...propertyRecommendations(input.propertyAdvisor),
     ...snapshotTrendRecommendations(),
   ];
 

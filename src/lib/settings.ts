@@ -15,6 +15,32 @@ const SETTING_KEYS = {
 
 export type WarReadinessSettingKey = keyof typeof SETTING_KEYS;
 
+const PROPERTY_SETTING_KEYS = {
+  rentalExtensionReminderDays: "rentalExtensionReminderDays",
+  urgentRentalReminderDays: "urgentRentalReminderDays",
+  manualRentalReminders: "manualRentalReminders",
+} as const;
+
+// Shenzy's stated preference: offer a rental extension once the renter has
+// 10 days left, and treat anything under 5 days as urgent. These are
+// defaults, not hardcoded — adjustable in Settings per-owner.
+export const DEFAULT_RENTAL_EXTENSION_REMINDER_DAYS = 10;
+export const DEFAULT_URGENT_RENTAL_REMINDER_DAYS = 5;
+
+export interface ManualRentalReminder {
+  id: string;
+  propertyLabel: string;
+  /** ISO date (YYYY-MM-DD) the rental is expected to end. */
+  rentalEndDate: string;
+  note?: string;
+}
+
+export interface PropertyAdvisorSettings {
+  rentalExtensionReminderDays: number;
+  urgentRentalReminderDays: number;
+  manualRentalReminders: ManualRentalReminder[];
+}
+
 // Torn doesn't expose how long Vicodin keeps the medical cooldown busy, so we
 // fall back to a configurable, clearly-labeled assumption. 6 hours is a
 // conservative (i.e. cautious-leaning-long) starting point — better to assume
@@ -62,6 +88,84 @@ export async function setWarReadinessSetting(settingKey: WarReadinessSettingKey,
     return;
   }
 
+  await prisma.setting.upsert({
+    where: { ownerKey_key: { ownerKey: DEFAULT_OWNER_KEY, key } },
+    update: { value },
+    create: { ownerKey: DEFAULT_OWNER_KEY, key, value },
+  });
+}
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const parsed = raw !== undefined ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : fallback;
+}
+
+function parseManualRentalReminders(raw: string | undefined): ManualRentalReminder[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry): entry is ManualRentalReminder =>
+        entry &&
+        typeof entry === "object" &&
+        typeof entry.id === "string" &&
+        typeof entry.propertyLabel === "string" &&
+        typeof entry.rentalEndDate === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+// The live API already exposes exact rental days-remaining for Shenzy's
+// rented properties (`rental_period_remaining`), so manual reminders are a
+// fallback for cases the API doesn't cover — e.g. an off-platform agreement,
+// or a future property whose rental detail isn't returned. Stored as a JSON
+// blob in the generic `Setting` table (per-owner) — no schema migration
+// needed, mirroring how `manualRankedWarStart` already uses this table for
+// a single value.
+export async function getPropertyAdvisorSettings(): Promise<PropertyAdvisorSettings> {
+  const [extensionDays, urgentDays, manualRemindersRaw] = await Promise.all([
+    readSetting(PROPERTY_SETTING_KEYS.rentalExtensionReminderDays),
+    readSetting(PROPERTY_SETTING_KEYS.urgentRentalReminderDays),
+    readSetting(PROPERTY_SETTING_KEYS.manualRentalReminders),
+  ]);
+
+  return {
+    rentalExtensionReminderDays: parsePositiveInt(extensionDays, DEFAULT_RENTAL_EXTENSION_REMINDER_DAYS),
+    urgentRentalReminderDays: parsePositiveInt(urgentDays, DEFAULT_URGENT_RENTAL_REMINDER_DAYS),
+    manualRentalReminders: parseManualRentalReminders(manualRemindersRaw),
+  };
+}
+
+export async function setRentalReminderThreshold(
+  settingKey: "rentalExtensionReminderDays" | "urgentRentalReminderDays",
+  value: string | null,
+): Promise<void> {
+  const key = PROPERTY_SETTING_KEYS[settingKey];
+
+  if (value === null || value.trim() === "") {
+    await prisma.setting.deleteMany({ where: { ownerKey: DEFAULT_OWNER_KEY, key } });
+    return;
+  }
+
+  await prisma.setting.upsert({
+    where: { ownerKey_key: { ownerKey: DEFAULT_OWNER_KEY, key } },
+    update: { value },
+    create: { ownerKey: DEFAULT_OWNER_KEY, key, value },
+  });
+}
+
+export async function setManualRentalReminders(reminders: ManualRentalReminder[]): Promise<void> {
+  const key = PROPERTY_SETTING_KEYS.manualRentalReminders;
+
+  if (reminders.length === 0) {
+    await prisma.setting.deleteMany({ where: { ownerKey: DEFAULT_OWNER_KEY, key } });
+    return;
+  }
+
+  const value = JSON.stringify(reminders);
   await prisma.setting.upsert({
     where: { ownerKey_key: { ownerKey: DEFAULT_OWNER_KEY, key } },
     update: { value },

@@ -11,17 +11,19 @@ import ApiAccessNotice from "@/components/ApiAccessNotice";
 import WarReadinessCard from "@/components/WarReadinessCard";
 import GearAdvisorSummaryCard from "@/components/GearAdvisorSummaryCard";
 import GarageAdvisorSummaryCard from "@/components/GarageAdvisorSummaryCard";
-import { getTornUserData, mapAdminSummary, mapCooldownOverview, getFactionWarStatus, getEquipmentDetails } from "@/lib/torn";
+import PropertyAdvisorSummaryCard from "@/components/PropertyAdvisorSummaryCard";
+import { getTornUserData, mapAdminSummary, mapCooldownOverview, getFactionWarStatus, getEquipmentDetails, getPropertyDetails } from "@/lib/torn";
 import { buildRecommendations } from "@/lib/advisor";
 import { getRecentSnapshots, estimateConsumableUsage } from "@/lib/snapshot";
-import { getWarReadinessSettings } from "@/lib/settings";
+import { getWarReadinessSettings, getPropertyAdvisorSettings } from "@/lib/settings";
 import { buildWarReadinessPlan } from "@/lib/warReadiness";
 import type { WarTimeSource } from "@/lib/warReadiness";
 import { buildGearAdvisorPlan } from "@/lib/gearAdvisor";
 import { buildGarageAdvisorPlan } from "@/lib/garageAdvisor";
+import { buildPropertyAdvisorPlan } from "@/lib/propertyAdvisor";
 import { prisma } from "@/lib/db";
 import { DEFAULT_OWNER_KEY } from "@/lib/owner";
-import type { EquipmentDetails, FactionWarStatus, WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
+import type { EquipmentDetails, FactionWarStatus, PropertyDetails, WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
 
 const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
 
@@ -73,10 +75,12 @@ export default async function DashboardPage() {
   const recentSnapshots = await getRecentSnapshots(60);
   const usageEstimates = estimateConsumableUsage(watchlist, recentSnapshots);
 
-  const [warReadinessSettings, factionWarStatus, equipmentDetails] = await Promise.all([
+  const [warReadinessSettings, factionWarStatus, equipmentDetails, propertyDetails, propertyAdvisorSettings] = await Promise.all([
     getWarReadinessSettings(),
     getFactionWarStatus().catch((): FactionWarStatus => ({})),
     getEquipmentDetails().catch((): EquipmentDetails => ({})),
+    getPropertyDetails().catch((): PropertyDetails => ({})),
+    getPropertyAdvisorSettings(),
   ]);
 
   const gearAdvisorPlan = buildGearAdvisorPlan({
@@ -86,6 +90,14 @@ export default async function DashboardPage() {
   });
 
   const garageAdvisorPlan = buildGarageAdvisorPlan({ enlistedcars: summary.enlistedcars });
+
+  const propertyAdvisorPlan = buildPropertyAdvisorPlan({
+    properties: propertyDetails.items,
+    characterId: summary.character.playerID,
+    extensionReminderDays: propertyAdvisorSettings.rentalExtensionReminderDays,
+    urgentReminderDays: propertyAdvisorSettings.urgentRentalReminderDays,
+    manualRentalReminders: propertyAdvisorSettings.manualRentalReminders,
+  });
 
   let rankedWarStartMs: number | undefined;
   let rankedWarSource: WarTimeSource = "none";
@@ -135,6 +147,7 @@ export default async function DashboardPage() {
     warReadiness: warReadinessPlan,
     gearAdvisor: gearAdvisorPlan,
     garageAdvisor: garageAdvisorPlan,
+    propertyAdvisor: propertyAdvisorPlan,
   });
 
   const displayName = summary.character.name !== "Unknown" ? summary.character.name : undefined;
@@ -192,6 +205,11 @@ export default async function DashboardPage() {
         {/* Racing Garage Advisor summary */}
         <div className="mb-8">
           <GarageAdvisorSummaryCard plan={garageAdvisorPlan} />
+        </div>
+
+        {/* Property & Rental Advisor summary */}
+        <div className="mb-8">
+          <PropertyAdvisorSummaryCard plan={propertyAdvisorPlan} />
         </div>
 
         {/* Cooldowns & Travel */}

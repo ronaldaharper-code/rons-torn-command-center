@@ -12,8 +12,8 @@ Center, in priority order:
 1. **Snapshot Engine** — complete
 2. **War Readiness Countdown** — complete
 3. **Gear Advisor** — complete
-4. **Garage/Racing** ← just completed (this entry)
-5. Property Management
+4. **Garage/Racing** — complete
+5. **Property Management** ← just completed (this entry)
 6. Public Share Pages
 7. Multi-user support
 
@@ -440,6 +440,134 @@ throwaway probe script (`scripts/probe-garage-data.mjs`) was used to confirm
 the live `enlistedcars` shape and test part-ID resolution, then deleted once
 findings were extracted — same pattern as Phases 2 and 3.
 
+## Phase 5 — Property &amp; Rental Advisor (complete)
+
+Goal: answer "What should Shenzy do next with properties and rentals?" — a
+Property / Rental Decision Support tool, not just a property display.
+
+**API investigation findings (recorded before building UI):**
+
+- The v1 `selections=properties` bundle (already in `ADMIN_SELECTIONS_LIST`)
+  returns a flat `{ [id]: {...} }` map with `property_type` (numeric),
+  `property` (bare name string), and a `rented: { user_id, days_left,
+  total_cost, cost_per_day } | null` shape.
+- **`v2/user/properties` is dramatically richer** — confirmed live and far
+  beyond what the brief assumed might be missing: named `owner`/`property`
+  objects, a `status` enum (`in_use`/`rented`/`for_rent`/`none`), `happy`,
+  `upkeep: { property, staff }`, `market_price`, `modifications: string[]`,
+  `staff: [{type, amount}]`, `used_by`, and — critically — for properties
+  Shenzy owns and has rented out: `cost_per_day`, `rental_period`,
+  **`rental_period_remaining`** (exact days left, reported live), `rented_by`,
+  and `lease_extension: {cost, period, created_at} | null` (non-null once an
+  extension offer has been queued). The Property Advisor fetches this v2
+  endpoint separately (`getPropertyDetails()`, mirrors `getEquipmentDetails()`)
+  rather than reshaping the v1 bundle.
+- **This means rental-extension timing can be built on live API data
+  directly** — Torn does expose exact days remaining, so Shenzy's stated
+  preference (offer at 10 days, urgent under 5) can be applied precisely
+  rather than falling back to manual tracking. Confirmed live: Shenzy owns 6
+  properties (Private Island, 4 Villas, 1 Trailer); 4 are currently rented
+  with 1/14/15/19 days remaining respectively (the 1-day Villa is flagged
+  urgent), one Villa is listed `for_rent`, and one Villa already has a
+  `lease_extension` offer queued.
+- Per the new **"priority order for truth"** standing instruction, manual
+  rental reminders (Settings) are built as a genuine *fallback* — they only
+  surface as relevant guidance when the live API doesn't expose
+  `rental_period_remaining` for a given rental, never as a substitute for
+  data the API already provides.
+
+What changed:
+
+1. **Extended `torn-types.ts`** with `TornPropertyV2` (and supporting
+   `TornPropertyParty`/`TornPropertyType`/`TornPropertyUpkeep`/
+   `TornPropertyStaffEntry`/`TornPropertyLeaseExtension`) and
+   `PropertyDetails`, modeling the confirmed-live v2 shape.
+
+2. **Added `getPropertyDetails()`** (`src/lib/torn.ts`) — fetches
+   `v2/user/properties` separately (5-minute cache, mirrors
+   `getEquipmentDetails()`), returning `{}` gracefully on any API error.
+
+3. **Extended `settings.ts`** with `getPropertyAdvisorSettings()` /
+   `setRentalReminderThreshold()` / `setManualRentalReminders()` — stores
+   `rentalExtensionReminderDays` (default **10**, per Shenzy's stated
+   preference), `urgentRentalReminderDays` (default **5**), and a JSON-encoded
+   list of `ManualRentalReminder { id, propertyLabel, rentalEndDate, note? }`
+   entries, all in the existing generic `Setting` table — **no schema
+   migration needed**, following the same pattern `manualRankedWarStart`
+   already established.
+
+4. **Built `propertyAdvisor.ts`** (`src/lib/propertyAdvisor.ts`, new) — a pure
+   planning module mirroring `garageAdvisor.ts`/`gearAdvisor.ts`'s
+   `build*Plan()` pattern:
+   - Identifies properties Shenzy owns directly (`owner.id === characterId`)
+     vs. others (e.g. a spouse's properties) — never assumes ownership.
+   - For each currently-rented property, only produces a timing alert when
+     the API actually reports `rental_period_remaining`; otherwise it's
+     surfaced as "renter/end-date details unavailable from API" rather than
+     guessed at.
+   - Applies Shenzy's thresholds verbatim: **urgent** under 5 days, **offer
+     extension now** at ≤10 days, and an **"extension window opens in N
+     days"** heads-up within a 5-day lookahead before the threshold — all
+     three phrased to match the brief's example wording.
+   - Produces parallel **manual reminder alerts** from Settings entries,
+     computing days-remaining from a stored end date the same way every
+     render (never persisting a stale "days left" snapshot), with the same
+     urgent/offer-now/upcoming bands plus an "overdue" band.
+   - Exposes `propertyDataAvailable` / `rentalTimingAvailable` flags so the
+     UI and advisor never have to guess whether data exists.
+
+5. **Built `PropertyAdvisorCard`** (`src/components/PropertyAdvisorCard.tsx`,
+   new) — full advisor view: headline/summary, an amber banner explaining
+   *when* renter/end-date detail is unavailable (only shown if it actually
+   is, for these properties it currently is available), a live "Rental
+   timing" alert list (urgent/offer-now/upcoming, color-coded), a manual
+   reminders section, and the full owned-properties grid (status, happy,
+   upkeep, staff cost, market value, modification count, renter, rent/day,
+   days remaining, extension-offer status).
+
+6. **Built `PropertyAdvisorSummaryCard`** (new) — compact dashboard summary
+   (headline, owned count / rented count / "need attention" count, "View
+   properties →" link), wired into `/dashboard` directly under the Garage
+   Advisor summary card.
+
+7. **Replaced the `/dashboard/properties` placeholder** with a fully wired
+   server component mirroring `garage/page.tsx` — auth check, live data +
+   settings fetch, `buildPropertyAdvisorPlan()`, renders `PropertyAdvisorCard`.
+
+8. **Built optional Settings UI** — `PropertyAdvisorSettingsForm` (new,
+   mirrors `WarReadinessSettingsForm`) lets Shenzy adjust the
+   extension/urgent thresholds and add/remove manual rental reminders (label
+   + end date + optional note), backed by a new
+   `PATCH /api/settings/property-advisor` route. Wired into `/settings`
+   directly under the War Readiness settings panel.
+
+9. **`advisor.ts`**: replaced the no-op `propertyRecommendations()` stub with
+   a full implementation matching the brief's example phrasings — "Rental
+   extension window opens in N days", "Offer extension now — renter has N
+   days remaining", "Rental is urgent — under N days remaining", "Property
+   data available, but renter/end-date details unavailable from API" (plus
+   "Manual rental reminder recommended" when no fallback is set up), and
+   per-manual-reminder follow-ups. `AdvisorInput.propertyAdvisor` is now
+   strongly typed as `PropertyAdvisorPlan`.
+
+10. **Live verification** (dev server, authenticated via the existing
+    `ron_dashboard_auth` cookie — no secrets read or printed): confirmed
+    `/dashboard/properties` renders the full advisor with live rental timing
+    (correctly flagging the 1-day-remaining Villa as **urgent**), the
+    dashboard summary card and "Rental is urgent — under 5 days remaining"
+    recommendation appear on `/dashboard`, and the new settings panel renders
+    on `/settings`.
+
+11. **Lint/build**: clean — same 8 pre-existing issues as before (4 errors,
+    4 warnings, all in code untouched by this phase). No new issues
+    introduced.
+
+No deployment occurred, per explicit instruction ("do not deploy"). A
+throwaway probe script (`scripts/probe-property-data.mjs`) was used to
+confirm the live `v2/user/properties` shape (and check the v1 bundle for
+comparison), then deleted once findings were extracted — same pattern as
+Phases 2–4.
+
 ## Commits this session
 - `67cc423` — Fix flat-vs-nested response shapes and rank/points/merits field sources (tagged `v0.3-real-data-foundation`)
 - `2a8ff50` — Build Happy Jump Planner, live Consumables status, and richer advisor recs
@@ -447,11 +575,12 @@ findings were extracted — same pattern as Phases 2 and 3.
 - `7cd9e19` — Phase 1: Snapshot Engine — extended payload, comparison utilities, history viewer
 - `80779e4` — Phase 2: War Readiness Countdown — time-aware readiness score, dual-time (TCT/local) display, Vicodin timing guidance, manual war-time settings, advisor integration
 - `91133a3` — Phase 3: Gear Advisor — live loadout with bonuses/stats/quality, missing-slot and weak-gear detection, war-readiness gear integration, advisor recommendations
-- *(this commit)* — Phase 4: Racing Garage Advisor — live garage/race data, win-rate-based best-car ranking, intra-car weak-area detection, "upgrade details unavailable from API" handling, advisor integration
+- `3c403b7` — Phase 4: Racing Garage Advisor — live garage/race data, win-rate-based best-car ranking, intra-car weak-area detection, "upgrade details unavailable from API" handling, advisor integration
+- *(this commit)* — Phase 5: Property & Rental Advisor — live rental-extension timing from `v2/user/properties`, threshold-based offer/urgent guidance, manual reminder fallback, advisor integration
 
 ## Next unfinished tasks
 
-Per the roadmap, **Phase 5 — Property Management** is next. Awaiting user
+Per the roadmap, **Phase 6 — Public Share Pages** is next. Awaiting user
 go-ahead before starting, consistent with the "stop and report after each
 phase" pattern.
 

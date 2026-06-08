@@ -3,10 +3,11 @@ import { SettingsForm } from "@/components/SettingsForm";
 import ConsumableUsagePanel from "@/components/ConsumableUsagePanel";
 import SnapshotHistoryPanel from "@/components/SnapshotHistoryPanel";
 import { WarReadinessSettingsForm } from "@/components/WarReadinessSettingsForm";
+import { PropertyAdvisorSettingsForm } from "@/components/PropertyAdvisorSettingsForm";
 import { prisma } from "@/lib/db";
 import { DEFAULT_OWNER_KEY } from "@/lib/owner";
 import { getRecentSnapshots, estimateConsumableUsage, compareAgainstWindow } from "@/lib/snapshot";
-import { getWarReadinessSettings } from "@/lib/settings";
+import { getWarReadinessSettings, getPropertyAdvisorSettings } from "@/lib/settings";
 import type { WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
 
 const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
@@ -47,6 +48,7 @@ export default async function SettingsPage() {
   const usageEstimates = estimateConsumableUsage(items, recentSnapshots);
   const weeklyTrend = compareAgainstWindow(recentSnapshots);
   const warReadinessSettings = await getWarReadinessSettings();
+  const propertyAdvisorSettings = await getPropertyAdvisorSettings();
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.08),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_28%),#03050c] px-4 py-8 text-white sm:px-6 lg:px-10">
@@ -61,6 +63,13 @@ export default async function SettingsPage() {
             initialPreferredTimeZone={warReadinessSettings.preferredTimeZone}
             initialManualRankedWarStart={warReadinessSettings.manualRankedWarStart}
             initialVicodinCooldownAssumptionMinutes={warReadinessSettings.vicodinCooldownAssumptionMinutes}
+          />
+        </div>
+        <div className="mt-8">
+          <PropertyAdvisorSettingsForm
+            initialExtensionReminderDays={propertyAdvisorSettings.rentalExtensionReminderDays}
+            initialUrgentReminderDays={propertyAdvisorSettings.urgentRentalReminderDays}
+            initialManualReminders={propertyAdvisorSettings.manualRentalReminders}
           />
         </div>
         <div className="mt-8">
