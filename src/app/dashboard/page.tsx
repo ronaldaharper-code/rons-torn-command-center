@@ -10,6 +10,7 @@ import CaptureSnapshotButton from "@/components/CaptureSnapshotButton";
 import ApiAccessNotice from "@/components/ApiAccessNotice";
 import WarReadinessCard from "@/components/WarReadinessCard";
 import GearAdvisorSummaryCard from "@/components/GearAdvisorSummaryCard";
+import GarageAdvisorSummaryCard from "@/components/GarageAdvisorSummaryCard";
 import { getTornUserData, mapAdminSummary, mapCooldownOverview, getFactionWarStatus, getEquipmentDetails } from "@/lib/torn";
 import { buildRecommendations } from "@/lib/advisor";
 import { getRecentSnapshots, estimateConsumableUsage } from "@/lib/snapshot";
@@ -17,6 +18,7 @@ import { getWarReadinessSettings } from "@/lib/settings";
 import { buildWarReadinessPlan } from "@/lib/warReadiness";
 import type { WarTimeSource } from "@/lib/warReadiness";
 import { buildGearAdvisorPlan } from "@/lib/gearAdvisor";
+import { buildGarageAdvisorPlan } from "@/lib/garageAdvisor";
 import { prisma } from "@/lib/db";
 import { DEFAULT_OWNER_KEY } from "@/lib/owner";
 import type { EquipmentDetails, FactionWarStatus, WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
@@ -83,6 +85,8 @@ export default async function DashboardPage() {
     battlestats: summary.battlestats,
   });
 
+  const garageAdvisorPlan = buildGarageAdvisorPlan({ enlistedcars: summary.enlistedcars });
+
   let rankedWarStartMs: number | undefined;
   let rankedWarSource: WarTimeSource = "none";
   if (factionWarStatus.rankedWar) {
@@ -130,6 +134,7 @@ export default async function DashboardPage() {
     snapshots: recentSnapshots,
     warReadiness: warReadinessPlan,
     gearAdvisor: gearAdvisorPlan,
+    garageAdvisor: garageAdvisorPlan,
   });
 
   const displayName = summary.character.name !== "Unknown" ? summary.character.name : undefined;
@@ -182,6 +187,11 @@ export default async function DashboardPage() {
         {/* Gear Advisor summary */}
         <div className="mb-8">
           <GearAdvisorSummaryCard plan={gearAdvisorPlan} />
+        </div>
+
+        {/* Racing Garage Advisor summary */}
+        <div className="mb-8">
+          <GarageAdvisorSummaryCard plan={garageAdvisorPlan} />
         </div>
 
         {/* Cooldowns & Travel */}

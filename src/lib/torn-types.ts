@@ -157,8 +157,16 @@ export interface TornEnlistedCar {
   tarmac?: number;
   class?: string;
   worth?: number;
+  points_spent?: number;
   races_entered?: number;
   races_won?: number;
+  is_removed?: boolean;
+  // Opaque numeric upgrade-part IDs — Torn's `v2/user/enlistedcars` exposes
+  // only the IDs, not names/details, and the catalog endpoints that would
+  // resolve them (`carupgrades`, `racing/cars`) return "access level not
+  // high enough" for this key. Treat as "upgrade details unavailable from
+  // API" rather than guessing what they represent.
+  parts?: number[];
 }
 
 export interface TornCriminalRecord {

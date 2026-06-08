@@ -3,6 +3,7 @@ import { buildJumpPlan } from "./jumpPlanner";
 import type { JumpPlan } from "./jumpPlanner";
 import type { WarReadinessPlan } from "./warReadiness";
 import type { GearAdvisorPlan } from "./gearAdvisor";
+import type { GarageAdvisorPlan } from "./garageAdvisor";
 import type {
   CharacterOverview,
   CooldownEntry,
@@ -42,6 +43,7 @@ export interface AdvisorInput {
   enlistedcars?: TornEnlistedCar[];
   warReadiness?: WarReadinessPlan;
   gearAdvisor?: GearAdvisorPlan;
+  garageAdvisor?: GarageAdvisorPlan;
   properties?: unknown;
   snapshots?: unknown;
 }
@@ -415,8 +417,82 @@ function gearRecommendations(plan?: GearAdvisorPlan): Recommendation[] {
   return recommendations;
 }
 
-function garageRecommendations(): Recommendation[] {
-  return [];
+// Translates the Racing Garage Advisor plan into "what should Shenzy do
+// next" guidance: whether garage data exists at all, the best win-rate car,
+// Class C focus (Shenzy's stated priority), and weak areas worth a look —
+// always "review recommended", and always honest that upgrade/part *details*
+// aren't available from the API at this key's access level. We do not fill
+// that gap with community racing strategy presented as fact.
+function garageRecommendations(plan?: GarageAdvisorPlan): Recommendation[] {
+  if (!plan) return [];
+
+  if (!plan.garageDataAvailable) {
+    return [
+      {
+        priority: "low",
+        title: "No racing data available",
+        explanation: plan.summary,
+        recommendedAction: "Enlist a car in the garage to start building race history and unlock racing guidance here.",
+        relatedModule: "garage",
+        confidenceScore: 0.4,
+      },
+    ];
+  }
+
+  const recommendations: Recommendation[] = [];
+
+  if (plan.bestCar) {
+    recommendations.push({
+      priority: "low",
+      title: `Best win-rate car appears to be ${plan.bestCar.car.name}`,
+      explanation: plan.bestCar.reason,
+      recommendedAction: "Lean on this car for races where win rate matters most — and keep an eye on it as more race history comes in.",
+      relatedModule: "garage",
+      confidenceScore: plan.bestCar.car.racesEntered > 0 ? 0.55 : 0.3,
+    });
+  }
+
+  if (plan.classCCars.length > 0) {
+    recommendations.push({
+      priority: "medium",
+      title: "Class C car data available — review handling upgrades",
+      explanation: `Shenzy has ${plan.classCCars.length} Class C car${plan.classCCars.length === 1 ? "" : "s"} enlisted (${plan.classCCars.map((car) => car.name).join(", ")}). Garage data is available for these, but the API isn't returning what upgrades are installed or recommended.`,
+      recommendedAction: "Review handling upgrades for these cars in-game — we can show installed-part counts, but not what the parts are or whether they're optimal.",
+      relatedModule: "garage",
+      confidenceScore: 0.5,
+    });
+  } else {
+    recommendations.push({
+      priority: "low",
+      title: "No Class C cars enlisted",
+      explanation: "Shenzy's racing focus is Class C, but none of the currently-enlisted cars are in that class.",
+      recommendedAction: "Consider enlisting a Class C car if that's the racing tier you want to focus on.",
+      relatedModule: "garage",
+      confidenceScore: 0.35,
+    });
+  }
+
+  for (const weak of plan.weakAreas) {
+    recommendations.push({
+      priority: "low",
+      title: `Review recommended: ${weak.car.name} — ${weak.statLabel.toLowerCase()}`,
+      explanation: weak.reason,
+      recommendedAction: "Review this car's setup before relying on it for races where that stat matters — not necessarily a sign it needs replacing.",
+      relatedModule: "garage",
+      confidenceScore: 0.4,
+    });
+  }
+
+  recommendations.push({
+    priority: "low",
+    title: "Garage data available, but upgrade details are unavailable from API",
+    explanation: "Torn is returning Shenzy's enlisted cars and race results, but the catalog endpoints that would explain what each car's installed parts do (or what to install next) return \"access level not high enough\" for this key.",
+    recommendedAction: "Treat any upgrade guidance from outside the API (wiki, community strategy) as opinion, not fact, and confirm details in-game before spending points.",
+    relatedModule: "garage",
+    confidenceScore: 0.35,
+  });
+
+  return recommendations;
 }
 
 // Translates the War Readiness plan into "what should Shenzy do next"
@@ -514,7 +590,7 @@ export function buildRecommendations(input: AdvisorInput): Recommendation[] {
     ...consumableUsageRecommendations(input.usageEstimates),
     ...bankRecommendations(),
     ...gearRecommendations(input.gearAdvisor),
-    ...garageRecommendations(),
+    ...garageRecommendations(input.garageAdvisor),
     ...warReadinessRecommendations(input.warReadiness),
     ...propertyRecommendations(),
     ...snapshotTrendRecommendations(),

@@ -11,8 +11,8 @@ Center, in priority order:
 
 1. **Snapshot Engine** — complete
 2. **War Readiness Countdown** — complete
-3. **Gear Advisor** ← just completed (this entry)
-4. Garage/Racing
+3. **Gear Advisor** — complete
+4. **Garage/Racing** ← just completed (this entry)
 5. Property Management
 6. Public Share Pages
 7. Multi-user support
@@ -326,21 +326,134 @@ throwaway probe script (`scripts/probe-gear-data.mjs`) was used to confirm
 the live equipment shapes and then deleted once findings were extracted —
 same pattern as Phase 2's `probe-war-data.mjs`.
 
+## Phase 4 — Racing Garage Advisor (complete)
+
+Goal: answer "What should Shenzy do next to improve racing performance?" —
+a Racing Garage Advisor, not just a garage display.
+
+**API investigation findings (recorded before building UI):**
+
+- `v2/user/enlistedcars` returns each enlisted car's `id` (enlisted ID),
+  `car_item_id`, `car_item_name`, `car_name` (custom name — currently `null`
+  for all of Shenzy's cars), all 7 racing sub-stats (`top_speed`,
+  `acceleration`, `braking`, `handling`, `safety`, `dirt`, `tarmac`), `class`
+  (Shenzy currently has Classes E, D, **C**), `worth`, `points_spent`,
+  `races_entered`, `races_won`, `is_removed`, and `parts: number[]` — **only
+  opaque numeric IDs**, no names or descriptions. Confirmed live, e.g.
+  Shenzy's "Chevalier CZ06" — Class C, 65 races / 14 wins, 15 parts
+  installed, 77 points spent.
+- **Confirmed upgrade/part details are genuinely unavailable from the API at
+  this key's access level** — tried two resolution paths and both failed:
+  resolving a part ID through the general items catalog (`v2/torn/14/items`)
+  returned an unrelated weapon, proving `parts` IDs belong to a separate
+  numbering system; and the dedicated catalog endpoints
+  (`v1 carupgrades`, `v2 torn/racing/cars`) both returned `{"error": {"code":
+  16, "error": "Access level of this key is not high enough"}}`. This is
+  exactly the scenario the brief anticipated ("If upgrade details are
+  unavailable, do not fake exact upgrade advice") — the entire module is
+  built around stating this plainly rather than guessing.
+- `races_won` / `races_entered` is the **one outcome metric** the API
+  actually reports — used as the sole defensible "best car" signal (win
+  rate), instead of inventing a combined performance score from speed/
+  handling/etc. A fallback path exists for the case where no car has race
+  history (not currently applicable to Shenzy), explicitly labeled as "a
+  weaker signal than actual race results".
+
+What changed:
+
+1. **Extended `TornEnlistedCar`** (`src/lib/torn-types.ts`) with
+   `car_name`, `points_spent`, `is_removed`, and `parts: number[]` —
+   confirmed against live data; the existing stat/class/worth/races fields
+   were already present but unconfirmed until now.
+
+2. **Built `garageAdvisor.ts`** (`src/lib/garageAdvisor.ts`, new) — a pure
+   planning module mirroring `gearAdvisor.ts`'s `build*Plan()` pattern,
+   independent of UI/data-fetching:
+   - Filters out removed cars (`is_removed`).
+   - Computes win rate per car (`undefined` when `races_entered === 0`,
+     never reported as 0%).
+   - Picks the **best car by win rate** (tiebreak by races entered), with
+     an explicitly-labeled fallback to combined sub-stats only if no car has
+     race history yet.
+   - Flags **weak areas** via *intra-car* comparison only — a car's lowest
+     sub-stat vs. its own average across all 7 stats, flagged only when all
+     7 are present and the low stat is below 60% of that average. This
+     avoids inventing a class/level benchmark the API doesn't expose, and is
+     phrased as "comparatively weaker than the rest of this car's profile,
+     not a claim about what's 'good' for its class." Scoped to the best car
+     + Class C cars only (Shenzy's stated racing focus), to avoid noise.
+   - Surfaces `garageDataAvailable` and `upgradeDataAvailable` (always
+     `false` at this key's access level) as first-class flags so the UI and
+     advisor never have to guess.
+
+3. **Built `GarageAdvisorCard`** (`src/components/GarageAdvisorCard.tsx`,
+   new) — full advisor view: headline/summary, a prominent banner explaining
+   *why* upgrade details are unavailable (naming the specific endpoints and
+   access-level error) and stating "We won't fabricate exact upgrade
+   advice", best-car section, weak-areas section (labeled "review
+   recommended"), a dedicated Class C section, and the full garage grid.
+   Each car tile shows name, enlisted/car-item ID, class badge, races
+   entered/won/win-rate, worth, points spent, all 7 sub-stats when present,
+   and an explicit "N parts installed — upgrade details unavailable from
+   API" line (never inventing what the parts do).
+
+4. **Built `GarageAdvisorSummaryCard`** (new) — compact dashboard summary
+   (headline, cars enlisted / Class C count / best win-rate car name, "View
+   garage →" link), wired into `/dashboard` directly under the Gear Advisor
+   summary card.
+
+5. **Replaced the `/dashboard/garage` placeholder** (`page.tsx`) with a
+   fully wired server component mirroring `gear/page.tsx` — auth check,
+   live data fetch, `buildGarageAdvisorPlan()`, renders `GarageAdvisorCard`.
+
+6. **`advisor.ts`**: replaced the no-op `garageRecommendations()` stub with
+   a full implementation, matching the brief's example phrasings — "No
+   racing data available" when there's nothing enlisted; "Best win-rate car
+   appears to be X" from the plan's best car; "Class C car data available —
+   review handling upgrades" (or a note that no Class C car is enlisted, if
+   that's the case); per-weak-area "review recommended" entries (per the
+   conservative-logic clause: "If the app cannot prove the next best
+   upgrade, say 'review recommended' rather than giving fake precision");
+   and an always-present, plainly-worded note that upgrade details are
+   unavailable from the API and that outside guidance (wiki/community)
+   should be treated as opinion, not fact — directly applying the new
+   "priority order for truth" standing instruction (live API data ranks
+   above community/wiki guidance, and strategy-based advice must be clearly
+   labeled as such, never presented as fact). `AdvisorInput.garageAdvisor`
+   is now strongly typed as `GarageAdvisorPlan`.
+
+7. **Live verification** (dev server, authenticated via the existing
+   `ron_dashboard_auth` cookie — no secrets read or printed): confirmed
+   `/dashboard/garage` renders the full advisor (headline, best racing car,
+   Class C section, "upgrade details unavailable from API" banner and
+   per-tile notes) and `/dashboard` shows the new summary card plus
+   "Class C car data available — review handling upgrades" / "review
+   recommended" / "Best win-rate car appears to be …" recommendations.
+
+8. **Lint/build**: clean — same 8 pre-existing issues as before (4 errors,
+   4 warnings, all in code untouched by this phase: `torn-types.ts`/`torn.ts`
+   `any` fields, plus pre-existing unused-var/`<img>` warnings elsewhere). No
+   new issues introduced.
+
+No deployment occurred, per explicit instruction ("do not deploy"). A
+throwaway probe script (`scripts/probe-garage-data.mjs`) was used to confirm
+the live `enlistedcars` shape and test part-ID resolution, then deleted once
+findings were extracted — same pattern as Phases 2 and 3.
+
 ## Commits this session
 - `67cc423` — Fix flat-vs-nested response shapes and rank/points/merits field sources (tagged `v0.3-real-data-foundation`)
 - `2a8ff50` — Build Happy Jump Planner, live Consumables status, and richer advisor recs
 - `4d9585d` — Add PROJECT_STATUS.md summarizing session progress and next steps
 - `7cd9e19` — Phase 1: Snapshot Engine — extended payload, comparison utilities, history viewer
 - `80779e4` — Phase 2: War Readiness Countdown — time-aware readiness score, dual-time (TCT/local) display, Vicodin timing guidance, manual war-time settings, advisor integration
-- *(this commit)* — Phase 3: Gear Advisor — live loadout with bonuses/stats/quality, missing-slot and weak-gear detection, war-readiness gear integration, advisor recommendations
+- `91133a3` — Phase 3: Gear Advisor — live loadout with bonuses/stats/quality, missing-slot and weak-gear detection, war-readiness gear integration, advisor recommendations
+- *(this commit)* — Phase 4: Racing Garage Advisor — live garage/race data, win-rate-based best-car ranking, intra-car weak-area detection, "upgrade details unavailable from API" handling, advisor integration
 
 ## Next unfinished tasks
 
-Per the roadmap, **Phase 4 — Garage/Racing** is next: using the live
-`enlistedcars` data already fetched via `summary.enlistedcars`, build
-race-readiness/upgrade guidance into `advisor.ts` and a dedicated dashboard
-view. Awaiting user go-ahead before starting, consistent with the "stop and
-report after each phase" pattern.
+Per the roadmap, **Phase 5 — Property Management** is next. Awaiting user
+go-ahead before starting, consistent with the "stop and report after each
+phase" pattern.
 
 Standing notes (unchanged):
 - Pre-existing duplicate `page 2.tsx` files remain untracked in
