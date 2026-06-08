@@ -30,7 +30,7 @@ const TORN_API_KEY = process.env.TORN_API_KEY;
 // selection (not exposed via `/user/` to a personal key, regardless of
 // access level). `enlistedcars` is fetched separately via the v2 API — the
 // v1 `/user/` endpoint returns "code 23: only available in API v2" for it.
-const PUBLIC_SELECTIONS_LIST = ["basic", "profile", "battlestats", "travel", "networth"];
+const PUBLIC_SELECTIONS_LIST = ["basic", "profile", "bars", "battlestats", "travel", "networth"];
 const ADMIN_SELECTIONS_LIST = [
   ...PUBLIC_SELECTIONS_LIST,
   "money",
@@ -45,6 +45,7 @@ const ADMIN_SELECTIONS_LIST = [
 const SELECTION_LABELS: Record<string, string> = {
   basic: "Basic profile",
   profile: "Profile & vitals",
+  bars: "Energy, nerve & happy",
   battlestats: "Battle stats",
   money: "Points & money",
   merits: "Merits",
@@ -70,11 +71,11 @@ function statusForErrorCode(code: number): TornAccessStatus {
 
 // Most `/user/` selections nest their data under a key matching the selection
 // name (`travel` -> `{ travel: {...} }`, `cooldowns` -> `{ cooldowns: {...} }`,
-// etc). These three are the exception — Torn merges their fields directly
-// into the top level of the response with no wrapper key. We re-wrap them
-// here so `TornUserData.basic` / `.profile` / `.battlestats` are always
-// populated consistently, regardless of which shape the API used.
-const FLAT_SELECTIONS = new Set(["basic", "profile", "battlestats", "money"]);
+// etc). These are the exception — Torn merges their fields directly into the
+// top level of the response with no wrapper key. We re-wrap them here so
+// `TornUserData.basic` / `.profile` / `.bars` / `.battlestats` / `.money` are
+// always populated consistently, regardless of which shape the API used.
+const FLAT_SELECTIONS = new Set(["basic", "profile", "bars", "battlestats", "money"]);
 
 function parseStatus(data: TornUserData): TornCharacterStatus {
   if (data.travel?.jail) return "jail";
@@ -83,13 +84,17 @@ function parseStatus(data: TornUserData): TornCharacterStatus {
   return "okay";
 }
 
-function formatTimestamp(value?: number | string): string {
-  if (!value) return "Unknown";
-  const date = typeof value === "number" ? new Date(value * 1000) : new Date(value);
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+const SYNC_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+// "Last synced" reflects the moment our server fetched/cached the data, so we
+// just format "now" directly — no unit conversion to get wrong. (The previous
+// `formatTimestamp(Date.now())` treated milliseconds as Unix seconds and
+// multiplied by 1000 again, producing nonsense dates like "Jul 20, 58405".)
+function formatSyncTime(): string {
+  return SYNC_TIME_FORMATTER.format(new Date());
 }
 
 interface SelectionFetchResult {
@@ -217,12 +222,8 @@ function buildInventoryMap(inventory?: TornUserData["inventory"], items?: TornUs
   return counts;
 }
 
-function extractStat(profile: any, key: string): { current: number; maximum: number } {
-  const value = profile?.[key];
-  if (typeof value === "object" && value !== null && "current" in value) {
-    return { current: value.current || 0, maximum: value.maximum || 0 };
-  }
-  return { current: 0, maximum: 0 };
+function extractBar(bar?: { current?: number; maximum?: number }): { current: number; maximum: number } {
+  return { current: bar?.current ?? 0, maximum: bar?.maximum ?? 0 };
 }
 
 function sumMerits(merits?: TornUserData["merits"]): number {
@@ -231,16 +232,16 @@ function sumMerits(merits?: TornUserData["merits"]): number {
 }
 
 export function mapCharacterOverview(data: TornUserData): CharacterOverview {
-  const profile = data.profile as any || {};
+  const bars = data.bars;
   return {
     name: data.basic?.name ?? "Unknown",
     playerID: data.basic?.player_id ?? 0,
     level: data.basic?.level ?? 0,
     rank: data.profile?.rank ?? "Unknown",
-    life: extractStat(profile, "life"),
-    energy: extractStat(profile, "energy"),
-    nerve: extractStat(profile, "nerve"),
-    happy: extractStat(profile, "happy"),
+    life: extractBar(bars?.life ?? data.profile?.life),
+    energy: extractBar(bars?.energy),
+    nerve: extractBar(bars?.nerve),
+    happy: extractBar(bars?.happy),
     status: parseStatus(data),
     battleStatsTotal: data.battlestats?.total,
     points: data.money?.points ?? 0,
@@ -270,7 +271,7 @@ export function mapPublicSummary(data: TornUserData): PublicSummary {
     networth: data.networth?.total ?? 0,
     cash: data.networth?.cash ?? 0,
     travelStatus: data.travel?.status ?? status,
-    lastSynced: formatTimestamp(Date.now()),
+    lastSynced: formatSyncTime(),
   };
 }
 
@@ -282,7 +283,7 @@ export function mapAdminSummary(data: TornUserData): AdminSummary {
     enlistedcars: data.enlistedcars,
     criminalRecord: data.criminalrecord,
     cooldowns: data.cooldowns,
-    lastSynced: formatTimestamp(Date.now()),
+    lastSynced: formatSyncTime(),
   };
 }
 

@@ -1,8 +1,11 @@
 import { inventoryQuantity } from "./torn";
+import { buildJumpPlan } from "./jumpPlanner";
+import type { JumpPlan } from "./jumpPlanner";
 import type {
   CharacterOverview,
   CooldownEntry,
   ConsumableUsageEstimate,
+  TornBattleStats,
   TornCooldowns,
   TornItemInventory,
   TornEquipmentItem,
@@ -23,6 +26,7 @@ export interface Recommendation {
 
 export interface AdvisorInput {
   character: CharacterOverview;
+  battleStats?: TornBattleStats;
   cooldowns?: TornCooldowns;
   cooldownOverview?: CooldownEntry[];
   inventory?: TornItemInventory;
@@ -93,13 +97,18 @@ function vitalsRecommendations(character: CharacterOverview): Recommendation[] {
   const { energy, nerve, happy } = character;
 
   if (energy.maximum > 0 && energy.current >= energy.maximum * 0.8) {
+    const happyBoost = happy.maximum > 0 && happy.current >= happy.maximum * 0.75;
     recommendations.push({
-      priority: "high",
-      title: "Train now — energy is nearly full",
-      explanation: `You have ${energy.current}/${energy.maximum} energy. Letting it cap wastes potential stat gains.`,
-      recommendedAction: "Head to the gym and burn your energy on training before it overflows.",
+      priority: happyBoost ? "critical" : "high",
+      title: happyBoost ? "Prime training window — energy and happy both high" : "Train now — energy is nearly full",
+      explanation: happyBoost
+        ? `Energy is at ${energy.current}/${energy.maximum} and happy is at ${happy.current}/${happy.maximum} — this combination maximizes stat gain per train.`
+        : `You have ${energy.current}/${energy.maximum} energy. Letting it cap wastes potential stat gains.`,
+      recommendedAction: happyBoost
+        ? "Head to the gym now and spend your energy while the happy bonus is active — about as good as training conditions get."
+        : "Head to the gym and burn your energy on training before it overflows.",
       relatedModule: "training",
-      confidenceScore: 0.85,
+      confidenceScore: happyBoost ? 0.9 : 0.85,
     });
   } else if (energy.maximum > 0 && energy.current < energy.maximum * 0.2) {
     recommendations.push({
@@ -146,7 +155,11 @@ function vitalsRecommendations(character: CharacterOverview): Recommendation[] {
   return recommendations;
 }
 
-function cooldownRecommendations(character: CharacterOverview, overview?: CooldownEntry[]): Recommendation[] {
+function cooldownRecommendations(
+  character: CharacterOverview,
+  overview?: CooldownEntry[],
+  inventory?: TornItemInventory,
+): Recommendation[] {
   if (!overview || overview.length === 0) return [];
 
   const recommendations: Recommendation[] = [];
@@ -154,14 +167,33 @@ function cooldownRecommendations(character: CharacterOverview, overview?: Cooldo
 
   const drug = byKey.get("drug");
   if (drug?.state === "ready") {
+    const xanaxCount = inventoryQuantity(inventory, "Xanax");
     recommendations.push({
-      priority: "medium",
-      title: "Drug cooldown ready",
-      explanation: "Your drug cooldown has expired, so a Xanax or other drug item is available to use.",
-      recommendedAction: "Use a drug item now if you need the energy/nerve boost for training or crimes.",
+      priority: xanaxCount > 0 ? "medium" : "low",
+      title: xanaxCount > 0 ? "Drug cooldown ready — Xanax in stock" : "Drug cooldown ready",
+      explanation:
+        xanaxCount > 0
+          ? `Your drug cooldown is clear and you have ${xanaxCount} Xanax on hand — a strong combo for an energy-fueled training session.`
+          : "Your drug cooldown has expired, so a drug item would land cleanly, but you don't currently have one in inventory.",
+      recommendedAction:
+        xanaxCount > 0
+          ? "Pop a Xanax now to refill energy and extend your training session while the cooldown is clear."
+          : "Pick up a Xanax (or your preferred drug item) from the item market so the next clear window doesn't go to waste.",
       relatedModule: "cooldowns",
-      confidenceScore: 0.6,
+      confidenceScore: xanaxCount > 0 ? 0.7 : 0.5,
     });
+  } else if (drug?.state === "waiting") {
+    const xanaxCount = inventoryQuantity(inventory, "Xanax");
+    if (xanaxCount > 0) {
+      recommendations.push({
+        priority: "low",
+        title: "Drug cooldown active — hold your Xanax",
+        explanation: `Your drug cooldown is still running${drug.detail ? ` (${drug.detail})` : ""}. Using a Xanax now would be wasted.`,
+        recommendedAction: `Hold your ${xanaxCount} Xanax until the cooldown clears, then time it with your next training session.`,
+        relatedModule: "cooldowns",
+        confidenceScore: 0.45,
+      });
+    }
   }
 
   const booster = byKey.get("booster");
@@ -210,6 +242,39 @@ function cooldownRecommendations(character: CharacterOverview, overview?: Cooldo
   }
 
   return recommendations;
+}
+
+// Builds on `buildJumpPlan` (shared with the Jump Planner page) so the
+// readiness call here always matches what the planner shows in detail —
+// "wait" produces no recommendation since there's nothing actionable to do.
+function jumpPlannerRecommendations(plan: JumpPlan): Recommendation[] {
+  switch (plan.readiness) {
+    case "ready":
+      return [
+        {
+          priority: "high",
+          title: plan.headline,
+          explanation: plan.summary,
+          recommendedAction: "Open the Jump Planner, pop your happy/energy items, then head to the gym while the boost is active.",
+          relatedModule: "jump-planner",
+          confidenceScore: 0.8,
+        },
+      ];
+    case "prepare":
+      return [
+        {
+          priority: "medium",
+          title: plan.headline,
+          explanation: plan.summary,
+          recommendedAction: "Check the Jump Planner for exactly which requirements are still unmet, then line them up before training.",
+          relatedModule: "jump-planner",
+          confidenceScore: 0.6,
+        },
+      ];
+    case "wait":
+    default:
+      return [];
+  }
 }
 
 function consumableUsageRecommendations(estimates?: ConsumableUsageEstimate[]): Recommendation[] {
@@ -295,10 +360,18 @@ function snapshotTrendRecommendations(): Recommendation[] {
 }
 
 export function buildRecommendations(input: AdvisorInput): Recommendation[] {
+  const jumpPlan = buildJumpPlan({
+    character: input.character,
+    battleStats: input.battleStats,
+    cooldownOverview: input.cooldownOverview,
+    inventory: input.inventory,
+  });
+
   const recommendations: Recommendation[] = [
     ...statusRecommendations(input.character),
     ...vitalsRecommendations(input.character),
-    ...cooldownRecommendations(input.character, input.cooldownOverview),
+    ...cooldownRecommendations(input.character, input.cooldownOverview, input.inventory),
+    ...jumpPlannerRecommendations(jumpPlan),
     ...watchlistRecommendations(input.watchlist, input.inventory),
     ...consumableUsageRecommendations(input.usageEstimates),
     ...bankRecommendations(),

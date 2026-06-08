@@ -24,6 +24,7 @@ const OUTPUT_PATH = join(ROOT, "docs", "API_VERIFICATION_RESULTS.md");
 const SELECTIONS = [
   "basic",
   "profile",
+  "bars",
   "battlestats",
   "travel",
   "networth",

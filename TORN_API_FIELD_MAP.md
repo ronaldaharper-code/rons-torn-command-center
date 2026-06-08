@@ -109,6 +109,18 @@ changes a selection name again).
   *and* `mapPublicSummary` — both now read `profile.rank`, and the bogus
   `rank` field has been removed from the `TornBasic` type entirely (the
   `basic` selection has never returned it).
+- **`energy`/`nerve`/`happy` live in `bars`, not `profile`**: another
+  pre-existing bug in the same family — `mapCharacterOverview` read
+  `profile.energy` / `profile.nerve` / `profile.happy`, but `profile` only
+  ever contains `life` (also `{current, maximum}`-shaped). The other three
+  vitals come from the separate `bars` selection, which returns `energy`,
+  `nerve`, `happy`, `life`, `chain`, and `server_time` flat at the top level
+  (added to `FLAT_SELECTIONS`). This silently zeroed out energy/happy/nerve
+  on the dashboard and in the new Jump Planner until corrected — confirmed
+  live: `bars` reports real values like `happy: 4973/5025`, `energy: 10/150`.
+  Bonus: `bars.chain` also exposes the player's personal chain participation
+  (`{current, maximum, timeout, modifier, cooldown}`) — a different, accessible
+  shape than the faction-scoped `chain` *selection* documented above.
 
 ## How the UI handles missing access
 

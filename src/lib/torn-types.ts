@@ -15,9 +15,22 @@ export interface TornProfile {
   rank?: string;
   rankposition?: number;
   life?: { current?: number; maximum?: number };
-  energy?: { current?: number; maximum?: number };
-  nerve?: { current?: number; maximum?: number };
-  happy?: { current?: number; maximum?: number };
+}
+
+export interface TornVitalBar {
+  current?: number;
+  maximum?: number;
+}
+
+// `energy`/`nerve`/`happy` live in the `bars` selection, not `profile` —
+// `profile` only carries `life`. `bars` returns all of them flat at the top
+// level (energy, nerve, happy, life, chain, server_time) with no wrapper key.
+export interface TornBars {
+  energy?: TornVitalBar;
+  nerve?: TornVitalBar;
+  happy?: TornVitalBar;
+  life?: TornVitalBar;
+  chain?: { current?: number; maximum?: number; timeout?: number; modifier?: number; cooldown?: number };
 }
 
 export interface TornMoney {
@@ -112,6 +125,7 @@ export interface TornCriminalRecord {
 export interface TornUserData {
   basic?: TornBasic;
   profile?: TornProfile;
+  bars?: TornBars;
   battlestats?: TornBattleStats;
   money?: TornMoney;
   merits?: TornMerits;

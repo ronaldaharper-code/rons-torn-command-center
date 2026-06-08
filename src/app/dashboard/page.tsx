@@ -5,6 +5,7 @@ import CharacterOverviewCard from "@/components/CharacterOverviewCard";
 import NetWorthCard from "@/components/NetWorthCard";
 import PrioritiesCard from "@/components/PrioritiesCard";
 import CooldownsCard from "@/components/CooldownsCard";
+import ConsumablesStatusCard from "@/components/ConsumablesStatusCard";
 import CaptureSnapshotButton from "@/components/CaptureSnapshotButton";
 import ApiAccessNotice from "@/components/ApiAccessNotice";
 import { getTornUserData, mapAdminSummary, mapCooldownOverview } from "@/lib/torn";
@@ -66,6 +67,7 @@ export default async function DashboardPage() {
 
   const recommendations = buildRecommendations({
     character: summary.character,
+    battleStats: data.battlestats,
     cooldowns: summary.cooldowns,
     cooldownOverview: cooldowns,
     inventory: data.inventory,
@@ -121,6 +123,11 @@ export default async function DashboardPage() {
         {/* Cooldowns & Travel */}
         <div className="mb-8">
           <CooldownsCard cooldowns={cooldowns} />
+        </div>
+
+        {/* Consumables */}
+        <div className="mb-8">
+          <ConsumablesStatusCard watchlist={watchlist} inventory={data.inventory} />
         </div>
 
         {/* Character Overview */}
