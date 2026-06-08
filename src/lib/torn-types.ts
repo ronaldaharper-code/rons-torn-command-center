@@ -3,7 +3,6 @@ export type TornCharacterStatus = "okay" | "hospital" | "jail" | "traveling" | "
 export interface TornBasic {
   name?: string;
   level?: number;
-  rank?: string;
   faction?: string;
   gender?: string;
   player_id?: number;
@@ -13,13 +12,25 @@ export interface TornBasic {
 
 export interface TornProfile {
   status?: string;
-  points?: number;
+  rank?: string;
   rankposition?: number;
   life?: { current?: number; maximum?: number };
   energy?: { current?: number; maximum?: number };
   nerve?: { current?: number; maximum?: number };
   happy?: { current?: number; maximum?: number };
 }
+
+export interface TornMoney {
+  points?: number;
+  money_onhand?: number;
+  cayman_bank?: number;
+  vault_amount?: number;
+}
+
+// The `merits` selection returns a flat map of merit category -> allocated
+// points (e.g. `{ "Nerve Bar": 10, "Critical Hit Rate": 0, ... }`), not a
+// single total — we sum the values for a "total merits invested" figure.
+export type TornMerits = Record<string, number>;
 
 export interface TornBattleStats {
   strength?: number;
@@ -102,6 +113,8 @@ export interface TornUserData {
   basic?: TornBasic;
   profile?: TornProfile;
   battlestats?: TornBattleStats;
+  money?: TornMoney;
+  merits?: TornMerits;
   travel?: TornTravel;
   networth?: TornNetworth;
   inventory?: TornItemInventory;

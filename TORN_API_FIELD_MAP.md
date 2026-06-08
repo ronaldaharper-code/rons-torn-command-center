@@ -88,6 +88,27 @@ changes a selection name again).
   (a different base path and response envelope than the v1 `/user/` calls).
 - **`items` is a lookup-style selection** (expects an `id` parameter) and
   isn't meaningful as a plain `/user/` selection — not used by this app.
+- **Some selections return flat, unwrapped data**: most selections nest their
+  payload under a key matching the selection name (`travel` → `{ travel: {...} }`,
+  `cooldowns` → `{ cooldowns: {...} }`). But `basic`, `profile`, `battlestats`,
+  and `money` instead merge their fields directly into the top level of the
+  response with **no** wrapper key — and `crimes` nests under a *different*
+  name (`criminalrecord`) than the selection itself. This was a real,
+  pre-existing bug: `mapCharacterOverview` was reading `data.basic?.name` /
+  `data.profile?.points` / `data.battlestats?.total`, all of which were
+  silently `undefined` because the actual fields lived at the top level —
+  the dashboard always showed "Your Dashboard" / all-zero stats, masked by
+  the fact that the Public Only key never had a chance to prove otherwise.
+  `fetchTornSelection()` now re-wraps the known-flat selections
+  (`FLAT_SELECTIONS` in `src/lib/torn.ts`) under their selection-name key so
+  `TornUserData.basic` / `.profile` / `.battlestats` / `.money` are always
+  populated consistently — and `rank`/`points`/`merits` are now read from
+  their *correct* sources (`profile.rank`, `money.points`, summed `merits`
+  category allocations) instead of the wrong ones the original code guessed.
+  The same `basic.rank` mistake existed in **both** `mapCharacterOverview`
+  *and* `mapPublicSummary` — both now read `profile.rank`, and the bogus
+  `rank` field has been removed from the `TornBasic` type entirely (the
+  `basic` selection has never returned it).
 
 ## How the UI handles missing access
 

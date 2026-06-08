@@ -33,6 +33,8 @@ const TORN_API_KEY = process.env.TORN_API_KEY;
 const PUBLIC_SELECTIONS_LIST = ["basic", "profile", "battlestats", "travel", "networth"];
 const ADMIN_SELECTIONS_LIST = [
   ...PUBLIC_SELECTIONS_LIST,
+  "money",
+  "merits",
   "inventory",
   "properties",
   "equipment",
@@ -44,6 +46,8 @@ const SELECTION_LABELS: Record<string, string> = {
   basic: "Basic profile",
   profile: "Profile & vitals",
   battlestats: "Battle stats",
+  money: "Points & money",
+  merits: "Merits",
   travel: "Travel status",
   networth: "Net worth",
   inventory: "Inventory",
@@ -63,6 +67,14 @@ function statusForErrorCode(code: number): TornAccessStatus {
   if (code === 4) return "unavailable";
   return "error";
 }
+
+// Most `/user/` selections nest their data under a key matching the selection
+// name (`travel` -> `{ travel: {...} }`, `cooldowns` -> `{ cooldowns: {...} }`,
+// etc). These three are the exception — Torn merges their fields directly
+// into the top level of the response with no wrapper key. We re-wrap them
+// here so `TornUserData.basic` / `.profile` / `.battlestats` are always
+// populated consistently, regardless of which shape the API used.
+const FLAT_SELECTIONS = new Set(["basic", "profile", "battlestats", "money"]);
 
 function parseStatus(data: TornUserData): TornCharacterStatus {
   if (data.travel?.jail) return "jail";
@@ -125,7 +137,8 @@ async function fetchTornSelection(selection: string): Promise<SelectionFetchResu
     };
   }
 
-  return { data: json, access: { selection, label: selectionLabel(selection), status: "ok" } };
+  const data = FLAT_SELECTIONS.has(selection) ? { [selection]: json } : json;
+  return { data, access: { selection, label: selectionLabel(selection), status: "ok" } };
 }
 
 // `enlistedcars` returns "code 23: This selection is only available in API v2"
@@ -212,21 +225,26 @@ function extractStat(profile: any, key: string): { current: number; maximum: num
   return { current: 0, maximum: 0 };
 }
 
+function sumMerits(merits?: TornUserData["merits"]): number {
+  if (!merits) return 0;
+  return Object.values(merits).reduce((total, value) => total + (Number(value) || 0), 0);
+}
+
 export function mapCharacterOverview(data: TornUserData): CharacterOverview {
   const profile = data.profile as any || {};
   return {
     name: data.basic?.name ?? "Unknown",
     playerID: data.basic?.player_id ?? 0,
     level: data.basic?.level ?? 0,
-    rank: data.basic?.rank ?? "Unknown",
+    rank: data.profile?.rank ?? "Unknown",
     life: extractStat(profile, "life"),
     energy: extractStat(profile, "energy"),
     nerve: extractStat(profile, "nerve"),
     happy: extractStat(profile, "happy"),
     status: parseStatus(data),
     battleStatsTotal: data.battlestats?.total,
-    points: profile.points ?? 0,
-    merits: profile.merits ?? 0,
+    points: data.money?.points ?? 0,
+    merits: sumMerits(data.merits),
   };
 }
 
@@ -247,7 +265,7 @@ export function mapPublicSummary(data: TornUserData): PublicSummary {
   return {
     name: data.basic?.name ?? "Unknown",
     level: data.basic?.level ?? 0,
-    rank: data.basic?.rank ?? "Unknown",
+    rank: data.profile?.rank ?? "Unknown",
     status,
     networth: data.networth?.total ?? 0,
     cash: data.networth?.cash ?? 0,
