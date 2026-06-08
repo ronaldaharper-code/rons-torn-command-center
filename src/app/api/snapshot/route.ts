@@ -17,11 +17,12 @@ export async function POST() {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const data = await getTornUserData().catch(() => null);
-  if (!data) {
+  const result = await getTornUserData().catch(() => null);
+  if (!result) {
     return NextResponse.json({ message: "Unable to reach the Torn API right now" }, { status: 502 });
   }
 
+  const { data } = result;
   const summary = mapAdminSummary(data);
 
   const storedWatchlist = await prisma.itemWatch.findMany({

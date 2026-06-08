@@ -5,6 +5,9 @@ import type {
   TornUserData,
   TornCharacterStatus,
   TornItemInventory,
+  TornAccessEntry,
+  TornAccessStatus,
+  TornDataResult,
   CharacterOverview,
   FinancialSnapshot,
   CooldownEntry,
@@ -13,28 +16,53 @@ import type {
 
 const TORN_API_BASE = "https://api.torn.com";
 const TORN_API_KEY = process.env.TORN_API_KEY;
-const PUBLIC_SELECTIONS = [
-  "basic",
-  "profile",
-  "stats",
-  "travel",
-  "networth",
-].join(",");
-const ADMIN_SELECTIONS = [
-  "basic",
-  "profile",
-  "stats",
-  "travel",
-  "networth",
+
+// IMPORTANT: the Torn `/user/` endpoint rejects certain selection
+// *combinations* with a generic "Wrong fields" (code 4) error — independent
+// of the key's access level. For example `stats` cannot be combined with
+// `profile`/`travel`/`networth`, and `weapons`/`armor` conflict with
+// `inventory`/`properties`/`networth`. Rather than maintain a brittle map of
+// which selections may be combined, we fetch each selection in its own
+// request (cached + parallelized) and merge the results. This also gives us
+// clean per-selection access reporting for the UI (see TORN_API_FIELD_MAP.md).
+const PUBLIC_SELECTIONS_LIST = ["basic", "profile", "stats", "travel", "networth"];
+const ADMIN_SELECTIONS_LIST = [
+  ...PUBLIC_SELECTIONS_LIST,
   "inventory",
-  "items",
   "properties",
   "weapons",
   "armor",
-  "garage",
+  "enlistedcars",
   "crimes",
   "chain",
-].join(",");
+  "cooldowns",
+];
+
+const SELECTION_LABELS: Record<string, string> = {
+  basic: "Basic profile",
+  profile: "Profile & vitals",
+  stats: "Battle stats",
+  travel: "Travel status",
+  networth: "Net worth",
+  inventory: "Inventory",
+  properties: "Properties",
+  weapons: "Weapons",
+  armor: "Armor",
+  enlistedcars: "Garage / racing",
+  crimes: "Crimes",
+  chain: "Faction chain",
+  cooldowns: "Cooldowns",
+};
+
+function selectionLabel(selection: string): string {
+  return SELECTION_LABELS[selection] ?? selection;
+}
+
+function statusForErrorCode(code: number): TornAccessStatus {
+  if (code === 16 || code === 7) return "denied";
+  if (code === 4) return "unavailable";
+  return "error";
+}
 
 function parseStatus(data: TornUserData): TornCharacterStatus {
   if (data.travel?.jail) return "jail";
@@ -52,12 +80,17 @@ function formatTimestamp(value?: number | string): string {
   }).format(date);
 }
 
-async function fetchTorn<T>(selections: string): Promise<T> {
+interface SelectionFetchResult {
+  data: Record<string, unknown>;
+  access: TornAccessEntry;
+}
+
+async function fetchTornSelection(selection: string): Promise<SelectionFetchResult> {
   if (!TORN_API_KEY) {
     throw new Error("Missing TORN_API_KEY in environment.");
   }
 
-  const url = `${TORN_API_BASE}/user/?selections=${encodeURIComponent(selections)}&key=${encodeURIComponent(
+  const url = `${TORN_API_BASE}/user/?selections=${encodeURIComponent(selection)}&key=${encodeURIComponent(
     TORN_API_KEY,
   )}`;
 
@@ -71,29 +104,46 @@ async function fetchTorn<T>(selections: string): Promise<T> {
   if (!response.ok) {
     const text = await response.text();
     console.error(`[Torn API Error] Status: ${response.status}, Body: ${text}`);
-    throw new Error(`Torn API request failed (${response.status}): ${text}`);
+    return {
+      data: {},
+      access: { selection, label: selectionLabel(selection), status: "error", message: `Request failed (${response.status})` },
+    };
   }
 
-  const json = (await response.json()) as T;
-  
-  // Log if we got an error response
-  if ((json as any).error) {
-    console.error("[Torn API] Error response:", (json as any).error);
+  const json = (await response.json()) as Record<string, unknown> & { error?: { code: number; error: string } };
+
+  if (json.error) {
+    console.warn(`[Torn API] Selection "${selection}" unavailable:`, json.error);
+    return {
+      data: {},
+      access: {
+        selection,
+        label: selectionLabel(selection),
+        status: statusForErrorCode(json.error.code),
+        message: json.error.error,
+      },
+    };
   }
-  
-  return json;
+
+  return { data: json, access: { selection, label: selectionLabel(selection), status: "ok" } };
 }
 
-export async function getTornUserData(): Promise<TornUserData> {
-  return cached<TornUserData>("torn:user:data", 120, async () => {
-    const data = await fetchTorn<TornUserData>(ADMIN_SELECTIONS);
-    console.log("[getTornUserData] Raw API response:", JSON.stringify(data).substring(0, 500));
-    return data;
-  });
+async function fetchTornMerged(selections: string[]): Promise<TornDataResult> {
+  const results = await Promise.all(selections.map(fetchTornSelection));
+  const data = Object.assign({}, ...results.map((result) => result.data)) as TornUserData;
+  // `enlistedcars` is the current API selection name for what this app models as `garage`.
+  if ("enlistedcars" in data) {
+    (data as Record<string, unknown>).garage = (data as Record<string, unknown>).enlistedcars;
+  }
+  return { data, access: results.map((result) => result.access) };
 }
 
-export async function getTornPublicData(): Promise<TornUserData> {
-  return cached<TornUserData>("torn:user:public", 90, () => fetchTorn<TornUserData>(PUBLIC_SELECTIONS));
+export async function getTornUserData(): Promise<TornDataResult> {
+  return cached<TornDataResult>("torn:user:data", 120, () => fetchTornMerged(ADMIN_SELECTIONS_LIST));
+}
+
+export async function getTornPublicData(): Promise<TornDataResult> {
+  return cached<TornDataResult>("torn:user:public", 90, () => fetchTornMerged(PUBLIC_SELECTIONS_LIST));
 }
 
 function buildInventoryMap(inventory?: TornUserData["inventory"], items?: TornUserData["items"]): Record<string, number> {

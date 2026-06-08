@@ -6,6 +6,7 @@ import NetWorthCard from "@/components/NetWorthCard";
 import PrioritiesCard from "@/components/PrioritiesCard";
 import CooldownsCard from "@/components/CooldownsCard";
 import CaptureSnapshotButton from "@/components/CaptureSnapshotButton";
+import ApiAccessNotice from "@/components/ApiAccessNotice";
 import { getTornUserData, mapAdminSummary, mapCooldownOverview } from "@/lib/torn";
 import { buildRecommendations } from "@/lib/advisor";
 import { getRecentSnapshots, estimateConsumableUsage } from "@/lib/snapshot";
@@ -30,8 +31,8 @@ export default async function DashboardPage() {
     );
   }
 
-  const data = await getTornUserData().catch(() => null);
-  if (!data) {
+  const result = await getTornUserData().catch(() => null);
+  if (!result) {
     return (
       <main className="min-h-screen bg-slate-950 px-4 py-12 text-white sm:px-6 lg:px-10">
         <div className="mx-auto rounded-[2rem] border border-white/10 bg-zinc-950/80 p-10 text-center shadow-xl shadow-black/30">
@@ -42,6 +43,7 @@ export default async function DashboardPage() {
     );
   }
 
+  const { data, access } = result;
   const summary = mapAdminSummary(data);
   const cooldowns = mapCooldownOverview(data);
 
@@ -101,6 +103,10 @@ export default async function DashboardPage() {
             </div>
             <CaptureSnapshotButton />
           </div>
+        </div>
+
+        <div className="mb-8">
+          <ApiAccessNotice access={access} />
         </div>
 
         {/* Priorities Today */}

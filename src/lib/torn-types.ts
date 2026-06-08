@@ -201,6 +201,20 @@ export interface SnapshotPayload {
   watchedInventory: Record<string, number>;
 }
 
+export type TornAccessStatus = "ok" | "denied" | "unavailable" | "error";
+
+export interface TornAccessEntry {
+  selection: string;
+  label: string;
+  status: TornAccessStatus;
+  message?: string;
+}
+
+export interface TornDataResult {
+  data: TornUserData;
+  access: TornAccessEntry[];
+}
+
 export interface ConsumableUsageEstimate {
   itemName: string;
   currentQuantity: number;

@@ -6,13 +6,13 @@ export async function GET(_: Request, context: { params: Promise<{ endpoint: str
 
   try {
     if (endpoint === "public") {
-      const data = await getTornPublicData();
-      return NextResponse.json(mapPublicSummary(data));
+      const result = await getTornPublicData();
+      return NextResponse.json({ ...mapPublicSummary(result.data), access: result.access });
     }
 
     if (endpoint === "admin") {
-      const data = await getTornUserData();
-      return NextResponse.json(mapAdminSummary(data));
+      const result = await getTornUserData();
+      return NextResponse.json({ ...mapAdminSummary(result.data), access: result.access });
     }
 
     return NextResponse.json({ message: "Unknown Torn API endpoint." }, { status: 404 });
