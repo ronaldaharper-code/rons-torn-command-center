@@ -170,6 +170,7 @@ export interface FinancialSnapshot {
 export interface AdminSummary {
   character: CharacterOverview;
   financial: FinancialSnapshot;
+  battlestats?: TornBattleStats;
   equipment?: TornEquipmentItem[];
   enlistedcars?: TornEnlistedCar[];
   criminalRecord?: TornCriminalRecord;
@@ -197,17 +198,44 @@ export interface CooldownEntry {
   detail?: string;
 }
 
+export interface SnapshotBattleStats {
+  total?: number;
+  strength?: number;
+  defense?: number;
+  speed?: number;
+  dexterity?: number;
+}
+
+export interface SnapshotCooldowns {
+  drug?: number;
+  medical?: number;
+  booster?: number;
+}
+
+// Point-in-time capture used to power trends, forecasting, and advisor
+// intelligence (net worth trajectory, stat growth rate, inventory burn rate,
+// war readiness forecasting, jump effectiveness, etc). New fields beyond the
+// original cash/points/vitals set are optional so older stored rows — which
+// predate this shape — still parse cleanly; readers should treat their
+// absence as "not captured at this snapshot" rather than zero.
 export interface SnapshotPayload {
   capturedAt: string;
   netWorth: number;
   cash: number;
   bank?: number;
+  stock?: number;
+  propertyValue?: number;
+  itemValue?: number;
   points: number;
   merits: number;
   battleStatsTotal?: number;
+  battleStats?: SnapshotBattleStats;
   energy: { current: number; maximum: number };
   happy: { current: number; maximum: number };
   nerve: { current: number; maximum: number };
+  life?: { current: number; maximum: number };
+  status?: TornCharacterStatus;
+  cooldowns?: SnapshotCooldowns;
   watchedInventory: Record<string, number>;
 }
 
@@ -223,6 +251,22 @@ export interface TornAccessEntry {
 export interface TornDataResult {
   data: TornUserData;
   access: TornAccessEntry[];
+}
+
+export interface SnapshotMetricDelta {
+  key: string;
+  label: string;
+  from: number;
+  to: number;
+  change: number;
+  changePercent?: number;
+}
+
+export interface SnapshotComparison {
+  from: SnapshotPayload;
+  to: SnapshotPayload;
+  elapsedMs: number;
+  metrics: SnapshotMetricDelta[];
 }
 
 export interface ConsumableUsageEstimate {

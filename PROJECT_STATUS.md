@@ -2,102 +2,109 @@
 
 ## Where things stand
 
-The dashboard now runs on a **Full Access Torn API key** (configured in
+The dashboard runs on a **Full Access Torn API key** (configured in
 `.env.local`, never committed) authenticating as "Shenzy". Tagged milestone:
 `v0.3-real-data-foundation` (commit `67cc423`).
 
-Since that tag, this session built out the highest-value features for
-**Priorities Today** (per the user's instruction to prioritize those before
-Gear/Garage). Latest commit: `2a8ff50` — "Build Happy Jump Planner, live
-Consumables status, and richer advisor recs".
+We're now executing the user's strategic roadmap for Ron's Torn Command
+Center, in priority order:
 
-## Completed this session
+1. **Snapshot Engine** ← just completed (this entry)
+2. War Readiness Countdown
+3. Gear Advisor
+4. Garage/Racing
+5. Property Management
+6. Public Share Pages
+7. Multi-user support
 
-1. **Fixed `formatTimestamp(Date.now())` bug** — it was treating milliseconds
-   as Unix seconds and multiplying by 1000 again, producing dates like
-   "Jul 20, 58405". Replaced with `formatSyncTime()`, which formats "now"
-   directly with no unit conversion to get wrong (`src/lib/torn.ts`).
+Guiding product principle: **this is a Torn decision engine, not a Torn
+dashboard** — every feature should answer "what should Shenzy do next?"
 
-2. **Discovered & fixed a second flat-selection vitals bug**: `energy`,
-   `nerve`, and `happy` do **not** live in the `profile` selection (which
-   only carries `life`) — they live in a separate `bars` selection, returned
-   flat with no wrapper key (`{energy, nerve, happy, life, chain,
-   server_time}`). `mapCharacterOverview` was reading
-   `profile.energy`/`.nerve`/`.happy` and always getting `0/0`. Now `bars` is
-   fetched, added to `FLAT_SELECTIONS`, and used as the source of truth for
-   all four vitals (`src/lib/torn.ts`, `src/lib/torn-types.ts`). Confirmed
-   live: happy is genuinely ~99% full (4973/5025), energy ~10% (15/150).
-   Bonus: `bars.chain` exposes the player's personal chain participation in
-   an accessible shape (distinct from the faction-scoped `chain` *selection*
-   documented earlier as inaccessible).
+## Phase 1 — Snapshot Engine (complete)
 
-3. **Built the Happy Jump Planner** (`/dashboard/jump-planner`):
-   - `src/lib/jumpPlanner.ts` — `buildJumpPlan()`, a pure function shared
-     between the planner page and `advisor.ts` so their verdicts never
-     disagree. Checks energy, happy, drug cooldown, Xanax/Ecstasy/Candy
-     stock (via `inventoryQuantity`), and battle stat distribution; returns
-     a `"ready" | "prepare" | "wait"` readiness verdict plus a checklist of
-     met/unmet requirements.
-   - `src/components/JumpPlannerCard.tsx` — renders the verdict, vitals bars,
-     consumable counts, requirement checklist, and a battle-stat distribution
-     breakdown (strength/defense/speed/dexterity %).
-   - `src/app/dashboard/jump-planner/page.tsx` — replaced the "Coming Soon"
-     placeholder with a real server component wired to live data.
+Goal: capture periodic state history as the foundation for trends,
+forecasting, and advisor intelligence (net worth trajectory, stat growth,
+inventory burn rate, war readiness forecasting, jump effectiveness, etc).
 
-4. **Improved Consumables**:
-   - `src/components/ConsumablesStatusCard.tsx` — new card on the main
-     dashboard showing live on-hand counts vs. each watchlist item's
-     `minTarget`, with Stocked / Low / Out badges and a low-stock count
-     summary chip. (The existing `ConsumableUsagePanel` on Settings, which
-     shows burn-rate estimates from snapshot history, is unchanged and still
-     serves its own purpose.)
+What changed:
 
-5. **Upgraded `advisor.ts`**:
-   - New `jumpPlannerRecommendations()` shares `buildJumpPlan()` with the
-     planner page — surfaces "train now" / "prepare for jump" guidance in
-     Priorities Today (silent on "wait" to avoid nagging with nothing
-     actionable).
-   - `cooldownRecommendations()` now checks actual Xanax stock when the drug
-     cooldown is ready/waiting, giving concrete "pop a Xanax now" or "hold
-     your N Xanax" guidance instead of generic "a drug item is available".
-   - `vitalsRecommendations()` now recognizes the energy+happy combo and
-     raises a "prime training window" recommendation (priority `critical`)
-     when both are high simultaneously, instead of just flagging energy.
+1. **Audited the existing `Snapshot` Prisma model** — confirmed the generic
+   `{ id, ownerKey, type, data: JSON string, createdAt }` shape is sufficient
+   as-is. **No schema migration was needed**; we only extended the
+   TypeScript `SnapshotPayload` shape (`src/lib/torn-types.ts`).
 
-6. **Lint/build**: clean. Lint issues actually dropped from 10 → 8 (replacing
-   an `any`-typed `extractStat` helper with a properly-typed `extractBar`
-   removed two pre-existing `@typescript-eslint/no-explicit-any` errors).
+2. **Extended `SnapshotPayload`** to capture the full required field set:
+   net worth, cash, bank, stock, property value, item value, points, merits,
+   battle stats (total + breakdown), energy/happy/nerve/life bars, status
+   (doubles as "travel status" — hospital/jail/traveling/okay), cooldowns
+   (drug/medical/booster), and watched inventory quantities. New fields are
+   **optional** so previously-stored snapshot rows keep parsing correctly —
+   readers treat their absence as "not captured at this snapshot," not zero.
+   Added `SnapshotBattleStats` / `SnapshotCooldowns` supporting types.
 
-7. **Docs**: `TORN_API_FIELD_MAP.md` updated with both new quirks (flat
-   `basic`/`profile`/`battlestats`/`money`/`bars` shapes, and the
-   `energy`/`nerve`/`happy`-live-in-`bars` correction).
+3. **Wired the new data sources through**: `mapAdminSummary` now also
+   surfaces `battlestats` (`src/lib/torn.ts`), and
+   `buildSnapshotPayload` (`src/lib/snapshot.ts`) populates every new
+   `SnapshotPayload` field from the live `AdminSummary`/`cooldowns` data.
+
+4. **Verified the existing capture action needs no changes**:
+   `CaptureSnapshotButton` → `POST /api/snapshot` → `captureSnapshot()` →
+   `buildSnapshotPayload()` already wired correctly; the route now
+   transparently captures the richer payload with zero route/button changes.
+
+5. **Built comparison utilities** (`compareSnapshots`, `compareAgainstWindow`
+   in `src/lib/snapshot.ts`) — pure, UI-independent diffing helpers that
+   compute metric-by-metric deltas (net worth, cash, battle stats total,
+   points, merits) between two snapshots, or between the latest snapshot and
+   the oldest one inside a time window (default 7 days). Metrics missing from
+   either side are skipped rather than reported as a misleading "drop to 0".
+   These are intentionally decoupled from the UI so the same logic can power
+   the history viewer, future forecasting, and `advisor.ts` trend rules
+   alike.
+
+6. **Built the snapshot history viewer** — new
+   `src/components/SnapshotHistoryPanel.tsx`, surfaced on `/settings`
+   (alongside `ConsumableUsagePanel`, where related historical tooling
+   already lives). Shows:
+   - A **weekly trend card** (powered by `compareAgainstWindow`) with
+     before → after values, absolute change, and percent change per metric,
+     color-coded green/red for up/down.
+   - A **recent captures table** (timestamp, net worth, cash, battle stats,
+     points, merits, status) for the last 20 snapshots.
+   - Graceful empty states for "no snapshots yet" and "not enough history for
+     a trend yet".
+
+7. **Lint/build**: clean — same 8 pre-existing issues as before (4 errors, 4
+   warnings, all in code untouched by this phase: `torn-types.ts` `any`
+   fields on `items`/`properties`/`news`, `torn.ts` `buildInventoryMap`
+   `any`, plus pre-existing unused-var/`<img>` warnings elsewhere). No new
+   issues introduced.
+
+No background scheduling and no deployment were added, per the explicit
+Phase 1 scope ("no background scheduling yet; no deployment yet").
 
 ## Commits this session
 - `67cc423` — Fix flat-vs-nested response shapes and rank/points/merits field sources (tagged `v0.3-real-data-foundation`)
 - `2a8ff50` — Build Happy Jump Planner, live Consumables status, and richer advisor recs
+- `4d9585d` — Add PROJECT_STATUS.md summarizing session progress and next steps
+- *(this commit)* — Phase 1: Snapshot Engine — extended payload, comparison utilities, history viewer
 
 ## Next unfinished tasks
 
-Per the user's standing instruction: **do not build Gear or Garage yet**
-unless the above is complete — it now is, so those are unblocked next:
+Per the roadmap, **Phase 2 — War Readiness Countdown** is next: a
+time-aware "will Shenzy be ready when ranked war starts?" feature —
+readiness score/countdown/blocking factors/recommended actions, drawing on
+energy/life/happy/nerve/cooldowns/travel/hospital/jail status and
+Xanax/Vicodin/blood bag stock. Spec calls for being conservative — "if
+uncertain, warn rather than overpromise." Ranked war start time should come
+from Torn data if available, else a manual per-`ownerKey` setting.
 
-1. **Gear module** (`/dashboard/gear`) — currently a placeholder. Real
-   `equipment` data is already fetched and available via
-   `summary.equipment` (`TornEquipmentItem[]`: name, type, equipped slot,
-   market value, quantity).
-2. **Racing/Garage module** (`/dashboard/garage`) — currently a placeholder.
-   Real `enlistedcars` data (v2 API) is already fetched and available via
-   `summary.enlistedcars` (`TornEnlistedCar[]`: car stats, races
-   entered/won, worth).
-3. Wire up the still-stubbed `gearRecommendations()` / `garageRecommendations()`
-   in `advisor.ts` (currently no-op stubs) once those modules have real UI to
-   link to.
-4. Consider surfacing `criminalRecord` (lifetime crime totals) and `merits`
-   (currently 38 invested) somewhere in the UI — fetched but not displayed.
-5. Pre-existing duplicate `page 2.tsx` files remain untracked in
-   `bank-stocks/`, `garage/`, `gear/`, `jump-planner/` — likely Finder/iCloud
-   sync artifacts from before any of this work; not created by this session,
-   deliberately left alone.
+After that: **Phase 3 — Gear Advisor** (using live `equipment` data already
+fetched via `summary.equipment`, feeding into `advisor.ts`).
 
-No deployment has occurred. Everything is local-only, per standing
-instructions.
+Standing notes (unchanged):
+- Pre-existing duplicate `page 2.tsx` files remain untracked in
+  `bank-stocks/`, `garage/`, `gear/`, `jump-planner/` — Finder/iCloud sync
+  artifacts, not created by any session work; deliberately left alone.
+- No deployment has occurred. Everything is local-only, per standing
+  instructions ("Do not deploy").

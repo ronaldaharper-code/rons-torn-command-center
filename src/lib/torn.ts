@@ -279,6 +279,7 @@ export function mapAdminSummary(data: TornUserData): AdminSummary {
   return {
     character: mapCharacterOverview(data),
     financial: mapFinancialSnapshot(data),
+    battlestats: data.battlestats,
     equipment: data.equipment,
     enlistedcars: data.enlistedcars,
     criminalRecord: data.criminalrecord,

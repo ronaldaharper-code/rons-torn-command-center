@@ -4,6 +4,8 @@ import { inventoryQuantity } from "./torn";
 import type {
   AdminSummary,
   ConsumableUsageEstimate,
+  SnapshotComparison,
+  SnapshotMetricDelta,
   SnapshotPayload,
   TornItemInventory,
   WatchedItem,
@@ -39,12 +41,33 @@ export function buildSnapshotPayload(
     netWorth: summary.financial.total,
     cash: summary.financial.cash,
     bank: summary.financial.bank,
+    stock: summary.financial.stock,
+    propertyValue: summary.financial.properties,
+    itemValue: summary.financial.items,
     points: summary.character.points,
     merits: summary.character.merits,
     battleStatsTotal: summary.character.battleStatsTotal,
+    battleStats: summary.battlestats
+      ? {
+          total: summary.battlestats.total,
+          strength: summary.battlestats.strength,
+          defense: summary.battlestats.defense,
+          speed: summary.battlestats.speed,
+          dexterity: summary.battlestats.dexterity,
+        }
+      : undefined,
     energy: summary.character.energy,
     happy: summary.character.happy,
     nerve: summary.character.nerve,
+    life: summary.character.life,
+    status: summary.character.status,
+    cooldowns: summary.cooldowns
+      ? {
+          drug: summary.cooldowns.drug,
+          medical: summary.cooldowns.medical,
+          booster: summary.cooldowns.booster,
+        }
+      : undefined,
     watchedInventory,
   };
 }
@@ -135,4 +158,68 @@ export function estimateConsumableUsage(watchlist: WatchedItem[], snapshots: Sna
       hasEnoughHistory,
     };
   });
+}
+
+// --- Comparison utilities ---------------------------------------------
+// Pure diffing helpers used to power trend cards and (eventually) advisor
+// rules like "net worth dropped 20% this week" or "stat growth has stalled".
+// Kept independent of any UI so the same comparisons can back the history
+// viewer, future forecasting, and recommendation generators alike.
+
+const COMPARISON_METRICS: { key: string; label: string; read: (snapshot: SnapshotPayload) => number | undefined }[] = [
+  { key: "netWorth", label: "Net worth", read: (s) => s.netWorth },
+  { key: "cash", label: "Cash on hand", read: (s) => s.cash },
+  { key: "battleStatsTotal", label: "Battle stats total", read: (s) => s.battleStatsTotal },
+  { key: "points", label: "Points", read: (s) => s.points },
+  { key: "merits", label: "Merits", read: (s) => s.merits },
+];
+
+// Compares two snapshots metric-by-metric. Metrics missing from either side
+// (e.g. older rows captured before `battleStats` existed) are skipped rather
+// than treated as zero, so trends never report a misleading "drop to 0".
+export function compareSnapshots(from: SnapshotPayload, to: SnapshotPayload): SnapshotComparison {
+  const metrics: SnapshotMetricDelta[] = [];
+
+  for (const metric of COMPARISON_METRICS) {
+    const fromValue = metric.read(from);
+    const toValue = metric.read(to);
+    if (fromValue === undefined || toValue === undefined) continue;
+
+    const change = toValue - fromValue;
+    metrics.push({
+      key: metric.key,
+      label: metric.label,
+      from: fromValue,
+      to: toValue,
+      change,
+      changePercent: fromValue !== 0 ? (change / Math.abs(fromValue)) * 100 : undefined,
+    });
+  }
+
+  return {
+    from,
+    to,
+    elapsedMs: new Date(to.capturedAt).getTime() - new Date(from.capturedAt).getTime(),
+    metrics,
+  };
+}
+
+// Compares the latest snapshot against the oldest one still inside `windowMs`
+// (default 7 days) — the basis for "trend over the last week" cards. Returns
+// undefined when there isn't enough history in the window to be meaningful.
+export function compareAgainstWindow(snapshots: SnapshotPayload[], windowMs: number = SEVEN_DAYS_MS): SnapshotComparison | undefined {
+  const sorted = [...snapshots].sort(
+    (a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
+  );
+  const latest = sorted[0];
+  if (!latest) return undefined;
+
+  const now = Date.now();
+  const inWindow = sorted.filter((snap) => now - new Date(snap.capturedAt).getTime() <= windowMs);
+  if (inWindow.length < MIN_SNAPSHOTS_FOR_ESTIMATE) return undefined;
+
+  const oldest = inWindow[inWindow.length - 1];
+  if (oldest.capturedAt === latest.capturedAt) return undefined;
+
+  return compareSnapshots(oldest, latest);
 }

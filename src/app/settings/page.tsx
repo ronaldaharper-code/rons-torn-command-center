@@ -1,9 +1,10 @@
 import { cookies } from "next/headers";
 import { SettingsForm } from "@/components/SettingsForm";
 import ConsumableUsagePanel from "@/components/ConsumableUsagePanel";
+import SnapshotHistoryPanel from "@/components/SnapshotHistoryPanel";
 import { prisma } from "@/lib/db";
 import { DEFAULT_OWNER_KEY } from "@/lib/owner";
-import { getRecentSnapshots, estimateConsumableUsage } from "@/lib/snapshot";
+import { getRecentSnapshots, estimateConsumableUsage, compareAgainstWindow } from "@/lib/snapshot";
 import type { WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
 
 const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
@@ -42,6 +43,7 @@ export default async function SettingsPage() {
 
   const recentSnapshots = await getRecentSnapshots(60);
   const usageEstimates = estimateConsumableUsage(items, recentSnapshots);
+  const weeklyTrend = compareAgainstWindow(recentSnapshots);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.08),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_28%),#03050c] px-4 py-8 text-white sm:px-6 lg:px-10">
@@ -53,6 +55,9 @@ export default async function SettingsPage() {
         <SettingsForm initialItems={items} />
         <div className="mt-8">
           <ConsumableUsagePanel estimates={usageEstimates} />
+        </div>
+        <div className="mt-8">
+          <SnapshotHistoryPanel snapshots={recentSnapshots.slice(0, 20)} weeklyTrend={weeklyTrend} />
         </div>
       </div>
     </main>
