@@ -2,6 +2,7 @@ import { inventoryQuantity } from "./torn";
 import { buildJumpPlan } from "./jumpPlanner";
 import type { JumpPlan } from "./jumpPlanner";
 import type { WarReadinessPlan } from "./warReadiness";
+import type { GearAdvisorPlan } from "./gearAdvisor";
 import type {
   CharacterOverview,
   CooldownEntry,
@@ -40,6 +41,7 @@ export interface AdvisorInput {
   equipment?: TornEquipmentItem[];
   enlistedcars?: TornEnlistedCar[];
   warReadiness?: WarReadinessPlan;
+  gearAdvisor?: GearAdvisorPlan;
   properties?: unknown;
   snapshots?: unknown;
 }
@@ -340,8 +342,77 @@ function bankRecommendations(): Recommendation[] {
   return [];
 }
 
-function gearRecommendations(): Recommendation[] {
-  return [];
+// Translates the Gear Advisor plan into "what should Shenzy do next"
+// guidance: missing slots first (can't fight without a weapon/armor), then
+// relatively-weak pieces worth a look, then a note when bonus data isn't
+// available — always phrased as "review recommended", never "replace",
+// matching `buildGearAdvisorPlan`'s conservative stance (we can't prove a
+// piece is bad, only that it's relatively weak within Shenzy's own loadout).
+function gearRecommendations(plan?: GearAdvisorPlan): Recommendation[] {
+  if (!plan || !plan.equipmentDataAvailable) return [];
+
+  const recommendations: Recommendation[] = [];
+
+  for (const slot of plan.missingSlots) {
+    const isCoreWeaponOrArmor = slot.key !== "temporary";
+    recommendations.push({
+      priority: isCoreWeaponOrArmor ? "high" : "medium",
+      title: slot.label,
+      explanation: slot.detail,
+      recommendedAction: "Equip something from inventory or pick up a replacement before relying on this loadout in a fight.",
+      relatedModule: "gear",
+      confidenceScore: 0.7,
+    });
+  }
+
+  if (plan.missingSlots.length === 0 && plan.loadout.primary) {
+    recommendations.push({
+      priority: "low",
+      title: "Primary weapon equipped and acceptable",
+      explanation: `${plan.loadout.primary.name} is equipped in the primary slot${
+        plan.loadout.primary.bonuses.length > 0 ? ` with the ${plan.loadout.primary.bonuses[0].title} bonus active` : ""
+      }.`,
+      recommendedAction: "No action needed — keep this slot filled.",
+      relatedModule: "gear",
+      confidenceScore: 0.5,
+    });
+  }
+
+  for (const highlight of plan.reviewRecommended) {
+    recommendations.push({
+      priority: "medium",
+      title: `Review recommended: ${highlight.item.name}`,
+      explanation: `${highlight.reason} Armor looks underpowered for ranked war if this is one of the pieces you'd be relying on.`,
+      recommendedAction: "Review this piece before the next ranked war — consider whether a stronger alternative is available, but it's not necessarily a replacement.",
+      relatedModule: "gear",
+      confidenceScore: 0.45,
+    });
+  }
+
+  if (!plan.bonusDataAvailable) {
+    recommendations.push({
+      priority: "low",
+      title: "Gear data available, but bonus details unavailable from API",
+      explanation: "Torn is returning Shenzy's equipped items, but not the richer stat/bonus detail right now — so named bonuses (like Deadeye or Impregnable) can't be confirmed from here.",
+      recommendedAction: "Check the Gear Advisor page directly in-game if you need to confirm bonus details before war.",
+      relatedModule: "gear",
+      confidenceScore: 0.4,
+    });
+  } else {
+    const namedArmorBonuses = plan.loadout.armor.filter((piece) => piece.bonuses.length > 0);
+    if (namedArmorBonuses.length > 0) {
+      recommendations.push({
+        priority: "low",
+        title: "Consider reviewing armor bonuses before next ranked war",
+        explanation: `${namedArmorBonuses.map((piece) => `${piece.name} (${piece.bonuses[0].title})`).join(", ")} carry named bonuses — worth confirming they still match Shenzy's preferred war setup.`,
+        recommendedAction: "Open the Gear Advisor to review armor bonuses and confirm the loadout is what you want going into war.",
+        relatedModule: "gear",
+        confidenceScore: 0.35,
+      });
+    }
+  }
+
+  return recommendations;
 }
 
 function garageRecommendations(): Recommendation[] {
@@ -442,7 +513,7 @@ export function buildRecommendations(input: AdvisorInput): Recommendation[] {
     ...watchlistRecommendations(input.watchlist, input.inventory),
     ...consumableUsageRecommendations(input.usageEstimates),
     ...bankRecommendations(),
-    ...gearRecommendations(),
+    ...gearRecommendations(input.gearAdvisor),
     ...garageRecommendations(),
     ...warReadinessRecommendations(input.warReadiness),
     ...propertyRecommendations(),

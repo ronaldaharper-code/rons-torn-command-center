@@ -65,6 +65,16 @@ export interface WarReadinessPlan {
   vicodinGuidance: VicodinTimingGuidance;
 }
 
+// Minimal, derived gear signal — computed by `gearAdvisor.ts` and passed in
+// rather than re-derived here, so the two advisors can never disagree about
+// what's equipped. Kept intentionally narrow: only the cases that are
+// unambiguous from the data (a slot is either filled or it isn't).
+export interface WarReadinessGearSummary {
+  hasWeapon: boolean;
+  hasArmor: boolean;
+  missingCoreSlotLabels: string[];
+}
+
 export interface WarReadinessInput {
   character: CharacterOverview;
   cooldowns?: TornCooldowns;
@@ -74,6 +84,7 @@ export interface WarReadinessInput {
   rankedWarSource: WarTimeSource;
   preferredTimeZone: string;
   vicodinCooldownAssumptionMinutes: number;
+  gearSummary?: WarReadinessGearSummary;
   /** Injectable for tests; defaults to `Date.now()`. */
   now?: number;
 }
@@ -211,6 +222,9 @@ export function buildWarReadinessPlan(input: WarReadinessInput): WarReadinessPla
   if (totalBloodBags === 0) score -= 10;
   if (xanaxCount === 0) score -= 5;
   if (vicodinCount === 0) score -= 5;
+  const gearSummary = input.gearSummary;
+  if (gearSummary && !gearSummary.hasWeapon) score -= 15;
+  if (gearSummary && !gearSummary.hasArmor) score -= 10;
   score = Math.max(0, Math.min(100, Math.round(score)));
 
   // --- Blocking issues ----------------------------------------------------
@@ -268,6 +282,29 @@ export function buildWarReadinessPlan(input: WarReadinessInput): WarReadinessPla
     });
   }
 
+  // Gear is fixable in seconds (just equip something from inventory), but we
+  // still can't *prove* it'll happen before war start — so it's a real
+  // blocker, not a timed one. Marking `resolvesAt: undefined` deliberately
+  // pushes `readyByWarStart` toward "unknown" rather than assuming it's solved.
+  if (gearSummary && !gearSummary.hasWeapon) {
+    blockingIssues.push({
+      key: "no-weapon-equipped",
+      label: "No weapon equipped",
+      detail: `Shenzy has nothing equipped in the ${gearSummary.missingCoreSlotLabels.join(", ").toLowerCase() || "primary, secondary, or melee"} slot — there's no way to deal damage in a fight until that changes. See the Gear Advisor.`,
+      severity: "high",
+      resolvesAt: undefined,
+    });
+  }
+  if (gearSummary && !gearSummary.hasArmor) {
+    blockingIssues.push({
+      key: "no-armor-equipped",
+      label: "No armor equipped",
+      detail: "Shenzy has no Defensive-slot items equipped — every hit lands at full force. See the Gear Advisor.",
+      severity: "medium",
+      resolvesAt: undefined,
+    });
+  }
+
   // --- Recommended actions -------------------------------------------------
   const recommendedActions: WarReadinessAction[] = [];
 
@@ -276,6 +313,13 @@ export function buildWarReadinessPlan(input: WarReadinessInput): WarReadinessPla
       key: "return-from-travel",
       label: "Return from travel",
       detail: "Head back to Torn — you can't fight in a faction war while you're abroad.",
+    });
+  }
+  if (gearSummary && (!gearSummary.hasWeapon || !gearSummary.hasArmor)) {
+    recommendedActions.push({
+      key: "close-gear-gaps",
+      label: "Close gear gaps before war",
+      detail: `${gearSummary.missingCoreSlotLabels.join(", ")} — open the Gear Advisor to equip something from inventory or pick up a replacement before relying on this loadout in a fight.`,
     });
   }
   if (vicodinCount === 0) {

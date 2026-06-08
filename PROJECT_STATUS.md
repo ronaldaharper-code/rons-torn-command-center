@@ -10,8 +10,8 @@ We're now executing the user's strategic roadmap for Ron's Torn Command
 Center, in priority order:
 
 1. **Snapshot Engine** — complete
-2. **War Readiness Countdown** ← just completed (this entry)
-3. Gear Advisor
+2. **War Readiness Countdown** — complete
+3. **Gear Advisor** ← just completed (this entry)
 4. Garage/Racing
 5. Property Management
 6. Public Share Pages
@@ -208,20 +208,139 @@ when ranked war starts?" — not a generic war checklist.
 
 No deployment occurred, per explicit instruction ("Do not deploy").
 
+## Phase 3 — Gear Advisor (complete)
+
+Goal: answer "Is Shenzy equipped properly for training, defending, and ranked
+war?" — not just display a gear list.
+
+**API investigation findings (recorded before building UI):**
+
+- `selections=equipment` (already in the live bundle) returns a flat list with
+  the **canonical slot category** in `type` — `Primary`/`Secondary`/`Melee`/
+  `Defensive`/`Temporary`/`Enhancer`/`Clothing` — plus `name`, `market_price`,
+  `quantity`, and a `UID` we can join on. It does **not** expose stats or
+  bonuses.
+- `v2/user/equipment` (fetched separately, new `getEquipmentDetails()`) is far
+  richer: `sub_type` (e.g. "Rifle"), `stats: {damage, accuracy, armor,
+  quality}`, named `bonuses: [{title, description, value}]`, `rarity`, `slot`,
+  `ammo`, `mods`. The two responses share the same `uid`/`UID`, so the Gear
+  Advisor joins them rather than guessing slot-number meanings from either
+  side alone — using the API's own categorical labels (per the brief: "do not
+  hardcode these assumptions if API data says otherwise").
+- **Confirmed Shenzy's personal context directly from live data — not
+  hardcoded**: Tavor TAR-21 (Primary) carries the **Deadeye** bonus ("28%
+  increased critical hit damage"); Riot Body (Defensive) carries
+  **Impregnable** ("23% decreased incoming melee damage"). Both match the
+  brief's stated assumptions and were read straight from the API, so nothing
+  needed to be assumed or invented.
+- `stats.quality` is the one numeric axis the API exposes across **both**
+  weapons and armor (Tavor 124.37 vs. Diamond Knife 22.71 vs. Combat Pants
+  28.95) — the only defensible single metric for a cross-category
+  strongest/weakest comparison without inventing a combined "power score".
+- Clothing/Enhancer items expose no stats or bonuses via either endpoint.
+- There is **no API-exposed benchmark** for "ideal gear at a given battle-stat
+  level" — so the battle-stats comparison stays informational/relative to
+  Shenzy's own loadout (956,395 total), with that limitation stated plainly
+  rather than inventing a score.
+
+**What was built:**
+
+1. **Extended `torn-types.ts`/`torn.ts`**: `TornEquipmentBonus`,
+   `TornEquipmentStats`, `TornEquipmentDetail`, `EquipmentDetails` types, and
+   `getEquipmentDetails()` (cached 300s under
+   `"torn:user:equipment-details"`, mirrors `getFactionWarStatus()`'s
+   defensive-fetch pattern — returns `{}` rather than throwing on API error).
+
+2. **`src/lib/gearAdvisor.ts`** (new, pure planning module, mirrors
+   `warReadiness.ts`/`jumpPlanner.ts`) — `buildGearAdvisorPlan()`:
+   - Joins the v1 list (canonical slot category) with the v2 detail feed (by
+     `uid`) into `GearPiece` records; `detailAvailable: false` is tracked
+     per-item so the UI shows **"bonus/quality detail unavailable from API"**
+     rather than rendering an empty bonus list as "no bonus" when the join
+     simply didn't happen — directly implementing "if gear bonuses are not
+     exposed, show 'bonus unavailable from API' instead of inventing".
+   - Groups the loadout into primary/secondary/melee/temporary/armor/other
+     and flags **missing slots** — only for the unambiguous "equipped or not"
+     categories (a single empty Primary/Secondary/Melee/Temporary slot, or
+     zero Defensive-type items at all). Deliberately does **not** assert a
+     fixed expected armor-piece count, since that would be hardcoding an
+     assumption the API doesn't state.
+   - Picks **strongest/weakest** by `stats.quality` (the one cross-category
+     metric available) and flags pieces whose quality sits below 60% of the
+     loadout's own average as **"review recommended"** — never "replace",
+     per the brief's conservative-logic requirement ("if the app cannot prove
+     a gear item is weak, phrase it as 'review recommended'").
+   - Surfaces a `battleStatsNote` that states plainly there's no API-exposed
+     benchmark for "ideal gear at this stat level" — comparison is relative
+     to Shenzy's own gear, not an invented external standard.
+
+3. **`src/components/GearAdvisorCard.tsx`** (new) — full loadout view:
+   headline/summary, battle-stats context note, a banner when bonus data is
+   unavailable, quick primary/secondary/melee/temporary slot summary, missing
+   slots, strongest/weakest highlights, review-recommended list, then full
+   weapon/armor/clothing tiles showing name, category/sub-type, rarity,
+   market value, stats, and named bonuses (or the "unavailable from API"
+   fallback). Surfaced at **`/dashboard/gear`** (replacing its prior
+   `ComingSoonPage` placeholder).
+
+4. **`src/components/GearAdvisorSummaryCard.tsx`** (new) — compact dashboard
+   summary (headline, missing-slot count, strongest piece, review-recommended
+   count, link to the full page), added to `/dashboard` right after the War
+   Readiness card.
+
+5. **Fed into War Readiness** (`warReadiness.ts`): added an optional
+   `gearSummary: { hasWeapon, hasArmor, missingCoreSlotLabels }` input —
+   computed once from the Gear Advisor plan and passed in, so the two
+   advisors can never disagree about what's equipped. A fully-empty weapon
+   loadout or zero armor now contributes a capped score penalty, a blocking
+   issue (`resolvesAt: undefined`, deliberately pushing `readyByWarStart`
+   toward `"unknown"` rather than assuming the player will gear up in time —
+   "warn rather than overpromise"), and a recommended action pointing at the
+   Gear Advisor. For Shenzy's current loadout (everything filled), this
+   contributes nothing — confirmed live.
+
+6. **`advisor.ts`**: replaced the no-op `gearRecommendations()` stub with a
+   full implementation — missing slots (high priority for
+   weapon/armor, medium for temporary), a confirmation note when the primary
+   slot is filled and acceptable, "review recommended" entries for relatively
+   weak pieces (phrased exactly per the brief — "Armor looks underpowered for
+   ranked war if this is one of the pieces you'd be relying on"), a note when
+   gear data is present but bonus detail isn't, and — when bonus data **is**
+   available and named armor bonuses are equipped — "Consider reviewing armor
+   bonuses before next ranked war". `AdvisorInput.gearAdvisor` is now
+   strongly typed as `GearAdvisorPlan` (was the unused `equipment` stub).
+
+7. **Live verification** (dev server, authenticated via the existing
+   `ron_dashboard_auth` cookie — no secrets read or printed): confirmed
+   `/dashboard/gear` renders the full loadout — Tavor TAR-21 showing
+   **Deadeye**, Riot Body showing **Impregnable**, strongest piece (Glock 17,
+   quality 129.7), weakest piece (Diamond Bladed Knife, quality 22.7), and 4
+   "review recommended" pieces (Combat Gloves/Pants, Diamond Bladed Knife,
+   Riot Body — each below 60% of the loadout's average quality). The
+   dashboard summary card renders and links through correctly.
+
+8. **Lint/build**: clean — same 8 pre-existing issues as before (none new).
+
+No deployment occurred, per explicit instruction ("Do not deploy"). A
+throwaway probe script (`scripts/probe-gear-data.mjs`) was used to confirm
+the live equipment shapes and then deleted once findings were extracted —
+same pattern as Phase 2's `probe-war-data.mjs`.
+
 ## Commits this session
 - `67cc423` — Fix flat-vs-nested response shapes and rank/points/merits field sources (tagged `v0.3-real-data-foundation`)
 - `2a8ff50` — Build Happy Jump Planner, live Consumables status, and richer advisor recs
 - `4d9585d` — Add PROJECT_STATUS.md summarizing session progress and next steps
 - `7cd9e19` — Phase 1: Snapshot Engine — extended payload, comparison utilities, history viewer
-- *(this commit)* — Phase 2: War Readiness Countdown — time-aware readiness score, dual-time (TCT/local) display, Vicodin timing guidance, manual war-time settings, advisor integration
+- `80779e4` — Phase 2: War Readiness Countdown — time-aware readiness score, dual-time (TCT/local) display, Vicodin timing guidance, manual war-time settings, advisor integration
+- *(this commit)* — Phase 3: Gear Advisor — live loadout with bonuses/stats/quality, missing-slot and weak-gear detection, war-readiness gear integration, advisor recommendations
 
 ## Next unfinished tasks
 
-Per the roadmap, **Phase 3 — Gear Advisor** is next: using the live
-`equipment` data already fetched via `summary.equipment`, feed
-recommendations into `advisor.ts` (e.g. flagging unequipped/suboptimal gear
-for the character's current activity). Awaiting user go-ahead before
-starting, consistent with the "stop and report after each phase" pattern.
+Per the roadmap, **Phase 4 — Garage/Racing** is next: using the live
+`enlistedcars` data already fetched via `summary.enlistedcars`, build
+race-readiness/upgrade guidance into `advisor.ts` and a dedicated dashboard
+view. Awaiting user go-ahead before starting, consistent with the "stop and
+report after each phase" pattern.
 
 Standing notes (unchanged):
 - Pre-existing duplicate `page 2.tsx` files remain untracked in

@@ -14,6 +14,8 @@ import type {
   CooldownState,
   FactionWarStatus,
   RankedWarWindow,
+  EquipmentDetails,
+  TornEquipmentDetail,
 } from "./torn-types";
 
 const TORN_API_BASE = "https://api.torn.com";
@@ -241,6 +243,43 @@ async function fetchFactionWarStatus(): Promise<FactionWarStatus> {
 // changes far less often than vitals/cooldowns, and this is its own request.
 export async function getFactionWarStatus(): Promise<FactionWarStatus> {
   return cached<FactionWarStatus>("torn:faction:wars", 300, fetchFactionWarStatus);
+}
+
+// `selections=equipment` (the main user-data bundle) only returns name/type/
+// market price/slot — it doesn't expose stats, named bonuses, or rarity.
+// `v2/user/equipment` does, so the Gear Advisor fetches it separately
+// (joined back to the v1 list by `uid`/`UID` — see `gearAdvisor.ts`).
+async function fetchEquipmentDetails(): Promise<EquipmentDetails> {
+  if (!TORN_API_KEY) {
+    throw new Error("Missing TORN_API_KEY in environment.");
+  }
+
+  const url = `${TORN_API_BASE}/v2/user/equipment?key=${encodeURIComponent(TORN_API_KEY)}`;
+  const response = await fetch(url, {
+    next: { revalidate: 300 },
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    return {};
+  }
+
+  const json = (await response.json()) as Record<string, unknown> & {
+    error?: { code: number; error: string };
+    equipment?: TornEquipmentDetail[];
+  };
+
+  if (json.error) {
+    console.warn("[Torn API] user/equipment (v2) unavailable:", json.error);
+    return {};
+  }
+
+  return { items: Array.isArray(json.equipment) ? json.equipment : [] };
+}
+
+// Cached separately (5 min) — gear changes far less often than vitals.
+export async function getEquipmentDetails(): Promise<EquipmentDetails> {
+  return cached<EquipmentDetails>("torn:user:equipment-details", 300, fetchEquipmentDetails);
 }
 
 async function fetchTornMerged(selections: string[], includeEnlistedCars: boolean): Promise<TornDataResult> {

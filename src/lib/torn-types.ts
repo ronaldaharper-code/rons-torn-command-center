@@ -108,6 +108,41 @@ export interface TornEquipmentItem {
   quantity?: number;
 }
 
+export interface TornEquipmentBonus {
+  id?: number;
+  title?: string;
+  description?: string;
+  value?: number;
+}
+
+export interface TornEquipmentStats {
+  damage?: number | null;
+  accuracy?: number | null;
+  armor?: number | null;
+  quality?: number | null;
+}
+
+// Richer per-item detail from `v2/user/equipment` — joined with the
+// `selections=equipment` list (above) by `uid`/`UID`. The v1 list provides
+// the canonical slot category (`type`: "Primary"/"Secondary"/"Melee"/
+// "Defensive"/"Temporary"/"Enhancer"/"Clothing") while this v2 detail adds
+// stats, named bonuses, and rarity that the v1 shape doesn't expose.
+export interface TornEquipmentDetail {
+  id?: number;
+  name?: string;
+  uid?: number;
+  type?: string;
+  sub_type?: string | null;
+  stats?: TornEquipmentStats | null;
+  bonuses?: TornEquipmentBonus[];
+  rarity?: string | null;
+  slot?: number;
+}
+
+export interface EquipmentDetails {
+  items?: TornEquipmentDetail[];
+}
+
 export interface TornEnlistedCar {
   id?: number;
   car_item_id?: number;

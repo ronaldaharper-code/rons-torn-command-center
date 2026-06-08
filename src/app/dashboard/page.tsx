@@ -9,15 +9,17 @@ import ConsumablesStatusCard from "@/components/ConsumablesStatusCard";
 import CaptureSnapshotButton from "@/components/CaptureSnapshotButton";
 import ApiAccessNotice from "@/components/ApiAccessNotice";
 import WarReadinessCard from "@/components/WarReadinessCard";
-import { getTornUserData, mapAdminSummary, mapCooldownOverview, getFactionWarStatus } from "@/lib/torn";
+import GearAdvisorSummaryCard from "@/components/GearAdvisorSummaryCard";
+import { getTornUserData, mapAdminSummary, mapCooldownOverview, getFactionWarStatus, getEquipmentDetails } from "@/lib/torn";
 import { buildRecommendations } from "@/lib/advisor";
 import { getRecentSnapshots, estimateConsumableUsage } from "@/lib/snapshot";
 import { getWarReadinessSettings } from "@/lib/settings";
 import { buildWarReadinessPlan } from "@/lib/warReadiness";
 import type { WarTimeSource } from "@/lib/warReadiness";
+import { buildGearAdvisorPlan } from "@/lib/gearAdvisor";
 import { prisma } from "@/lib/db";
 import { DEFAULT_OWNER_KEY } from "@/lib/owner";
-import type { FactionWarStatus, WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
+import type { EquipmentDetails, FactionWarStatus, WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
 
 const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
 
@@ -69,10 +71,17 @@ export default async function DashboardPage() {
   const recentSnapshots = await getRecentSnapshots(60);
   const usageEstimates = estimateConsumableUsage(watchlist, recentSnapshots);
 
-  const [warReadinessSettings, factionWarStatus] = await Promise.all([
+  const [warReadinessSettings, factionWarStatus, equipmentDetails] = await Promise.all([
     getWarReadinessSettings(),
     getFactionWarStatus().catch((): FactionWarStatus => ({})),
+    getEquipmentDetails().catch((): EquipmentDetails => ({})),
   ]);
+
+  const gearAdvisorPlan = buildGearAdvisorPlan({
+    equipment: summary.equipment,
+    equipmentDetails: equipmentDetails.items,
+    battlestats: summary.battlestats,
+  });
 
   let rankedWarStartMs: number | undefined;
   let rankedWarSource: WarTimeSource = "none";
@@ -87,6 +96,15 @@ export default async function DashboardPage() {
     }
   }
 
+  const missingCoreSlotLabels = gearAdvisorPlan.missingSlots
+    .filter((slot) => slot.key === "primary" || slot.key === "secondary" || slot.key === "melee" || slot.key === "armor")
+    .map((slot) => slot.label);
+  const gearSummaryForReadiness = {
+    hasWeapon: Boolean(gearAdvisorPlan.loadout.primary || gearAdvisorPlan.loadout.secondary || gearAdvisorPlan.loadout.melee),
+    hasArmor: gearAdvisorPlan.loadout.armor.length > 0,
+    missingCoreSlotLabels,
+  };
+
   const warReadinessPlan = buildWarReadinessPlan({
     character: summary.character,
     cooldowns: summary.cooldowns,
@@ -96,6 +114,7 @@ export default async function DashboardPage() {
     rankedWarSource,
     preferredTimeZone: warReadinessSettings.preferredTimeZone,
     vicodinCooldownAssumptionMinutes: warReadinessSettings.vicodinCooldownAssumptionMinutes,
+    gearSummary: gearAdvisorPlan.equipmentDataAvailable ? gearSummaryForReadiness : undefined,
   });
 
   const recommendations = buildRecommendations({
@@ -110,6 +129,7 @@ export default async function DashboardPage() {
     enlistedcars: summary.enlistedcars,
     snapshots: recentSnapshots,
     warReadiness: warReadinessPlan,
+    gearAdvisor: gearAdvisorPlan,
   });
 
   const displayName = summary.character.name !== "Unknown" ? summary.character.name : undefined;
@@ -157,6 +177,11 @@ export default async function DashboardPage() {
         {/* War Readiness Countdown */}
         <div className="mb-8">
           <WarReadinessCard plan={warReadinessPlan} />
+        </div>
+
+        {/* Gear Advisor summary */}
+        <div className="mb-8">
+          <GearAdvisorSummaryCard plan={gearAdvisorPlan} />
         </div>
 
         {/* Cooldowns & Travel */}
