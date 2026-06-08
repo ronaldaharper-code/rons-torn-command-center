@@ -177,6 +177,39 @@ export interface WatchedItem {
   alertEnabled: boolean;
 }
 
+export type CooldownState = "ready" | "waiting" | "unavailable";
+
+export interface CooldownEntry {
+  key: string;
+  label: string;
+  state: CooldownState;
+  secondsRemaining?: number;
+  detail?: string;
+}
+
+export interface SnapshotPayload {
+  capturedAt: string;
+  netWorth: number;
+  cash: number;
+  bank?: number;
+  points: number;
+  merits: number;
+  battleStatsTotal?: number;
+  energy: { current: number; maximum: number };
+  happy: { current: number; maximum: number };
+  nerve: { current: number; maximum: number };
+  watchedInventory: Record<string, number>;
+}
+
+export interface ConsumableUsageEstimate {
+  itemName: string;
+  currentQuantity: number;
+  dailyUsage7d?: number;
+  dailyUsage30d?: number;
+  daysRemaining?: number;
+  hasEnoughHistory: boolean;
+}
+
 export interface PublicSummary {
   name: string;
   level: number;

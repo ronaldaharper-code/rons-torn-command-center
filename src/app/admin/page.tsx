@@ -1,16 +1,6 @@
 import { cookies } from "next/headers";
 import { AdminLoginForm } from "@/components/AdminLoginForm";
 import SidebarNav from "@/components/SidebarNav";
-import CharacterOverviewCard from "@/components/CharacterOverviewCard";
-import NetWorthCard from "@/components/NetWorthCard";
-import PrioritiesCard from "@/components/PrioritiesCard";
-import { getTornUserData, mapAdminSummary } from "@/lib/torn";
-import { buildRecommendations } from "@/lib/advisor";
-import { prisma } from "@/lib/db";
-import { DEFAULT_OWNER_KEY } from "@/lib/owner";
-import type { WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
-
-const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
 
 async function isAuthenticated() {
   return (await cookies()).get("ron_dashboard_auth")?.value === "1";
@@ -27,87 +17,19 @@ export default async function AdminPage() {
     );
   }
 
-  const data = await getTornUserData().catch(() => null);
-  if (!data) {
-    return (
-      <main className="min-h-screen bg-slate-950 px-4 py-12 text-white sm:px-6 lg:px-10">
-        <div className="mx-auto rounded-[2rem] border border-white/10 bg-zinc-950/80 p-10 text-center shadow-xl shadow-black/30">
-          <h1 className="text-3xl font-semibold">Unable to load Torn admin data</h1>
-          <p className="mt-4 text-slate-400">Verify your Torn API key and retry. The admin dashboard needs a working server-side Torn API connection.</p>
-        </div>
-      </main>
-    );
-  }
-
-  const summary = mapAdminSummary(data);
-
-  const storedWatchlist = await prisma.itemWatch.findMany({
-    where: { ownerKey: DEFAULT_OWNER_KEY },
-    orderBy: { itemName: "asc" },
-  });
-  const watchlist: WatchedItem[] = storedWatchlist.map((row) => ({
-    id: row.id,
-    itemName: row.itemName,
-    category: VALID_CATEGORIES.includes(row.category as WatchedItemCategory)
-      ? (row.category as WatchedItemCategory)
-      : "other",
-    minTarget: row.minTarget,
-    alertEnabled: row.alertEnabled,
-  }));
-
-  const recommendations = buildRecommendations({
-    character: summary.character,
-    cooldowns: summary.cooldowns,
-    inventory: data.inventory,
-    watchlist,
-    gear: summary.gear,
-    garage: summary.garage,
-  });
-
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      {/* Sidebar */}
       <SidebarNav />
-
-      {/* Main Content */}
       <main className="ml-48 p-6">
-        {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-white">
-              <span className="text-amber-400">👑</span>{" "}
-              {summary.character.name !== "Unknown" ? `${summary.character.name}'s Command Center` : "Private Command Center"}
-            </h1>
-            <p className="text-slate-400 mt-1">
-              Last synced: {summary.lastSynced}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-slate-400">Readiness</p>
-            <p className="text-2xl font-bold text-green-400">✓ Ready</p>
-          </div>
-        </div>
-
-        {/* Ron's Priorities Today */}
-        <div className="mb-8">
-          <PrioritiesCard
-            recommendations={recommendations}
-            characterName={summary.character.name !== "Unknown" ? summary.character.name : undefined}
-            maxItems={5}
-          />
-        </div>
-
-        {/* Character Overview */}
-        <div className="mb-8">
-          <CharacterOverviewCard
-            data={summary.character}
-            profileImage={data.basic?.image}
-          />
-        </div>
-
-        {/* Net Worth */}
-        <div className="mb-8">
-          <NetWorthCard data={summary.financial} />
+        <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-10 text-center shadow-xl shadow-black/30">
+          <h1 className="text-3xl font-bold text-white">Service Admin</h1>
+          <p className="mt-4 text-slate-400">
+            Reserved for future service-owner tools — managing players, support, subscriptions, abuse handling, and
+            operational issues. Not part of the player experience.
+          </p>
+          <span className="mt-6 inline-block rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-300">
+            Coming later
+          </span>
         </div>
       </main>
     </div>

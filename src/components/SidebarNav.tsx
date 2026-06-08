@@ -4,15 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
-  { icon: "📊", label: "Dashboard", href: "/admin" },
-  { icon: "📈", label: "Jump Planner", href: "/admin/jump-planner" },
-  { icon: "🏦", label: "Bank & Stocks", href: "/admin/bank-stocks" },
-  { icon: "⚙️", label: "Gear Tracker", href: "/admin/gear" },
-  { icon: "🏎️", label: "Race Garage", href: "/admin/garage" },
-  { icon: "⚡", label: "Crimes & Cooldowns", href: "/admin/crimes" },
-  { icon: "⚠️", label: "Alerts", href: "/admin/alerts" },
-  { icon: "📝", label: "Activity Log", href: "/admin/activity" },
-  { icon: "📊", label: "Stat History", href: "/admin/stats" },
+  { icon: "📊", label: "Dashboard", href: "/dashboard" },
+  { icon: "📈", label: "Jump Planner", href: "/dashboard/jump-planner" },
+  { icon: "🏦", label: "Bank Planner", href: "/dashboard/bank-stocks" },
+  { icon: "⚙️", label: "Gear", href: "/dashboard/gear" },
+  { icon: "🏎️", label: "Racing", href: "/dashboard/garage" },
+  { icon: "🏠", label: "Properties", href: "/dashboard/properties" },
   { icon: "⚙️", label: "Settings", href: "/settings" },
 ];
 
@@ -24,7 +21,7 @@ export default function SidebarNav() {
       {/* Header */}
       <div className="mb-8 pb-4 border-b border-white/10">
         <h1 className="text-lg font-bold text-white">
-          <span className="text-amber-400">👑</span> RON'S TORN
+          <span className="text-amber-400">👑</span> RON&apos;S TORN
         </h1>
         <p className="text-xs text-slate-400 mt-1">Command Center</p>
       </div>

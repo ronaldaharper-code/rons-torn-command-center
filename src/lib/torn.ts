@@ -1,5 +1,15 @@
 import { cached } from "./cache";
-import type { AdminSummary, PublicSummary, TornUserData, TornCharacterStatus, CharacterOverview, FinancialSnapshot } from "./torn-types";
+import type {
+  AdminSummary,
+  PublicSummary,
+  TornUserData,
+  TornCharacterStatus,
+  TornItemInventory,
+  CharacterOverview,
+  FinancialSnapshot,
+  CooldownEntry,
+  CooldownState,
+} from "./torn-types";
 
 const TORN_API_BASE = "https://api.torn.com";
 const TORN_API_KEY = process.env.TORN_API_KEY;
@@ -169,4 +179,88 @@ export function mapAdminSummary(data: TornUserData): AdminSummary {
     cooldowns: (data as any).cooldowns,
     lastSynced: formatTimestamp(Date.now()),
   };
+}
+
+export function inventoryQuantity(inventory: TornItemInventory | undefined, itemName: string): number {
+  const entry = Object.values(inventory?.items ?? {}).find(
+    (item) => (item?.name ?? "").toLowerCase() === itemName.toLowerCase(),
+  );
+  return Number(entry?.quantity ?? 0);
+}
+
+function formatSecondsRemaining(seconds: number): string {
+  if (seconds <= 0) return "";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m remaining`;
+  return `${minutes}m remaining`;
+}
+
+function cooldownStateFromSeconds(seconds: number): CooldownState {
+  if (seconds <= 0) return "ready";
+  return "waiting";
+}
+
+export function mapCooldownOverview(data: TornUserData): CooldownEntry[] {
+  const cooldowns = data.cooldowns ?? {};
+  const travel = data.travel;
+
+  const entries: CooldownEntry[] = [
+    {
+      key: "drug",
+      label: "Drug",
+      state: cooldownStateFromSeconds(cooldowns.drug ?? 0),
+      secondsRemaining: cooldowns.drug ?? 0,
+      detail: (cooldowns.drug ?? 0) > 0 ? formatSecondsRemaining(cooldowns.drug ?? 0) : "Ready to use",
+    },
+    {
+      key: "booster",
+      label: "Booster",
+      state: cooldownStateFromSeconds(cooldowns.booster ?? 0),
+      secondsRemaining: cooldowns.booster ?? 0,
+      detail: (cooldowns.booster ?? 0) > 0 ? formatSecondsRemaining(cooldowns.booster ?? 0) : "Ready to use",
+    },
+    {
+      key: "medical",
+      label: "Medical",
+      state: cooldownStateFromSeconds(cooldowns.medical ?? 0),
+      secondsRemaining: cooldowns.medical ?? 0,
+      detail: (cooldowns.medical ?? 0) > 0 ? formatSecondsRemaining(cooldowns.medical ?? 0) : "Ready to use",
+    },
+  ];
+
+  // Crime and mission cooldowns aren't part of the `cooldowns` selection Torn
+  // exposes today — surface them as "unavailable" rather than guessing at a
+  // ready/waiting state from data we don't actually have.
+  entries.push(
+    {
+      key: "crime",
+      label: "Crime",
+      state: "unavailable",
+      detail: "Crime cooldown data isn't available from the API yet",
+    },
+    {
+      key: "mission",
+      label: "Mission",
+      state: "unavailable",
+      detail: "Mission cooldown data isn't available from the API yet",
+    },
+  );
+
+  if (travel?.traveling) {
+    entries.push({
+      key: "travel",
+      label: "Travel",
+      state: "waiting",
+      detail: travel.destination ? `Traveling to ${travel.destination}` : "Currently traveling",
+    });
+  } else if (travel?.jail) {
+    entries.push({ key: "travel", label: "Travel", state: "unavailable", detail: "Currently in jail" });
+  } else if (travel?.hospital) {
+    entries.push({ key: "travel", label: "Travel", state: "unavailable", detail: "Currently in hospital" });
+  } else {
+    entries.push({ key: "travel", label: "Travel", state: "ready", detail: "Available to travel" });
+  }
+
+  return entries;
 }

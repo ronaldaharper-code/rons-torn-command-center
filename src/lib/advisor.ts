@@ -1,5 +1,8 @@
+import { inventoryQuantity } from "./torn";
 import type {
   CharacterOverview,
+  CooldownEntry,
+  ConsumableUsageEstimate,
   TornCooldowns,
   TornItemInventory,
   TornGear,
@@ -21,8 +24,10 @@ export interface Recommendation {
 export interface AdvisorInput {
   character: CharacterOverview;
   cooldowns?: TornCooldowns;
+  cooldownOverview?: CooldownEntry[];
   inventory?: TornItemInventory;
   watchlist: WatchedItem[];
+  usageEstimates?: ConsumableUsageEstimate[];
   // Future hooks: wired up once their data sources land. Each currently
   // contributes no recommendations, but keeping them in the input shape
   // means the engine itself won't need to change when they're filled in.
@@ -40,13 +45,6 @@ const PRIORITY_RANK: Record<RecommendationPriority, number> = {
   medium: 2,
   low: 3,
 };
-
-function inventoryQuantity(inventory: TornItemInventory | undefined, itemName: string): number {
-  const entry = Object.values(inventory?.items ?? {}).find(
-    (item) => (item?.name ?? "").toLowerCase() === itemName.toLowerCase(),
-  );
-  return Number(entry?.quantity ?? 0);
-}
 
 function statusRecommendations(character: CharacterOverview): Recommendation[] {
   switch (character.status) {
@@ -148,15 +146,17 @@ function vitalsRecommendations(character: CharacterOverview): Recommendation[] {
   return recommendations;
 }
 
-function cooldownRecommendations(cooldowns?: TornCooldowns): Recommendation[] {
-  if (!cooldowns) return [];
+function cooldownRecommendations(character: CharacterOverview, overview?: CooldownEntry[]): Recommendation[] {
+  if (!overview || overview.length === 0) return [];
 
   const recommendations: Recommendation[] = [];
+  const byKey = new Map(overview.map((entry) => [entry.key, entry]));
 
-  if ((cooldowns.drug ?? 0) <= 0) {
+  const drug = byKey.get("drug");
+  if (drug?.state === "ready") {
     recommendations.push({
       priority: "medium",
-      title: "Drug cooldown is clear",
+      title: "Drug cooldown ready",
       explanation: "Your drug cooldown has expired, so a Xanax or other drug item is available to use.",
       recommendedAction: "Use a drug item now if you need the energy/nerve boost for training or crimes.",
       relatedModule: "cooldowns",
@@ -164,25 +164,71 @@ function cooldownRecommendations(cooldowns?: TornCooldowns): Recommendation[] {
     });
   }
 
-  if ((cooldowns.medical ?? 0) <= 0) {
+  const booster = byKey.get("booster");
+  if (booster?.state === "ready") {
     recommendations.push({
       priority: "low",
-      title: "Medical cooldown is clear",
-      explanation: "You're able to use a medical item right now without it being wasted on cooldown.",
-      recommendedAction: "Use a medical item if you're below full health or expecting to take damage soon.",
-      relatedModule: "cooldowns",
-      confidenceScore: 0.5,
-    });
-  }
-
-  if ((cooldowns.booster ?? 0) <= 0) {
-    recommendations.push({
-      priority: "low",
-      title: "Booster cooldown is clear",
+      title: "Booster cooldown ready",
       explanation: "A booster item would not be wasted right now since your booster cooldown has expired.",
       recommendedAction: "Use a booster item if you have one and are about to train or fight.",
       relatedModule: "cooldowns",
       confidenceScore: 0.5,
+    });
+  } else if (booster?.state === "waiting") {
+    recommendations.push({
+      priority: "low",
+      title: "Booster cooldown active",
+      explanation: `Your booster cooldown is still running${booster.detail ? ` (${booster.detail})` : ""}, so using another would be wasted.`,
+      recommendedAction: "Hold off on booster items until the cooldown clears.",
+      relatedModule: "cooldowns",
+      confidenceScore: 0.4,
+    });
+  }
+
+  const medical = byKey.get("medical");
+  if (medical?.state === "ready" && character.life.maximum > 0 && character.life.current < character.life.maximum) {
+    recommendations.push({
+      priority: "medium",
+      title: "Medical cooldown warning",
+      explanation: `You're below full health (${character.life.current}/${character.life.maximum}) and your medical cooldown is clear.`,
+      recommendedAction: "Use a medical item now to heal efficiently before the cooldown resets on its own.",
+      relatedModule: "cooldowns",
+      confidenceScore: 0.55,
+    });
+  }
+
+  const crime = byKey.get("crime");
+  if (crime?.state === "ready") {
+    recommendations.push({
+      priority: "medium",
+      title: "Crime cooldown ready",
+      explanation: "Your crime cooldown is clear, so an attempt right now won't be wasted on cooldown.",
+      recommendedAction: "Run your highest-value available crime while the cooldown is open.",
+      relatedModule: "crimes",
+      confidenceScore: 0.5,
+    });
+  }
+
+  return recommendations;
+}
+
+function consumableUsageRecommendations(estimates?: ConsumableUsageEstimate[]): Recommendation[] {
+  if (!estimates || estimates.length === 0) return [];
+
+  const recommendations: Recommendation[] = [];
+
+  for (const estimate of estimates) {
+    if (!estimate.hasEnoughHistory || estimate.daysRemaining === undefined) continue;
+    if (estimate.daysRemaining > 7) continue;
+
+    const isCritical = estimate.daysRemaining <= 2;
+    recommendations.push({
+      priority: isCritical ? "high" : "medium",
+      title: `${estimate.itemName} running low at current usage`,
+      explanation: `At your recent usage rate, your ${estimate.currentQuantity} ${estimate.itemName} will run out in about ${Math.round(estimate.daysRemaining)} day${Math.round(estimate.daysRemaining) === 1 ? "" : "s"}.`,
+      recommendedAction: `Restock ${estimate.itemName} soon to avoid running dry based on your burn rate.`,
+      relatedModule: "consumables",
+      confidenceScore: isCritical ? 0.75 : 0.6,
     });
   }
 
@@ -252,8 +298,9 @@ export function buildRecommendations(input: AdvisorInput): Recommendation[] {
   const recommendations: Recommendation[] = [
     ...statusRecommendations(input.character),
     ...vitalsRecommendations(input.character),
-    ...cooldownRecommendations(input.cooldowns),
+    ...cooldownRecommendations(input.character, input.cooldownOverview),
     ...watchlistRecommendations(input.watchlist, input.inventory),
+    ...consumableUsageRecommendations(input.usageEstimates),
     ...bankRecommendations(),
     ...gearRecommendations(),
     ...garageRecommendations(),

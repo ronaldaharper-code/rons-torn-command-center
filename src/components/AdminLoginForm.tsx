@@ -21,7 +21,7 @@ export function AdminLoginForm() {
     setLoading(false);
 
     if (response.ok) {
-      window.location.href = "/admin";
+      window.location.href = "/dashboard";
       return;
     }
 
