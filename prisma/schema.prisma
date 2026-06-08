@@ -14,9 +14,10 @@ model Setting {
 }
 
 model ItemWatch {
-  id          Int     @id @default(autoincrement())
-  itemName    String  @unique
-  minTarget   Int     @default(0)
+  id           Int     @id @default(autoincrement())
+  itemName     String  @unique
+  category     String  @default("consumable")
+  minTarget    Int     @default(0)
   alertEnabled Boolean @default(true)
 }
 

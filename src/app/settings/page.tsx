@@ -1,15 +1,9 @@
 import { cookies } from "next/headers";
 import { SettingsForm } from "@/components/SettingsForm";
 import { prisma } from "@/lib/db";
+import type { WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
 
-const defaultWatchlist = [
-  { itemName: "Xanax", minTarget: 10, alertEnabled: true },
-  { itemName: "Vicodin", minTarget: 10, alertEnabled: true },
-  { itemName: "Ecstasy", minTarget: 12, alertEnabled: true },
-  { itemName: "Empty Blood Bag", minTarget: 3, alertEnabled: true },
-  { itemName: "Filled Blood Bag", minTarget: 3, alertEnabled: true },
-  { itemName: "Candy", minTarget: 6, alertEnabled: true },
-];
+const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
 
 async function isAuthenticated() {
   return (await cookies()).get("ron_dashboard_auth")?.value === "1";
@@ -29,26 +23,25 @@ export default async function SettingsPage() {
     );
   }
 
-  const storedItems = await prisma.itemWatch.findMany();
-  const items = defaultWatchlist.map((item) => {
-    const stored = storedItems.find((storedItem) => storedItem.itemName === item.itemName);
-    return stored
-      ? {
-          itemName: stored.itemName,
-          minTarget: stored.minTarget,
-          alertEnabled: stored.alertEnabled,
-        }
-      : item;
-  });
+  const storedItems = await prisma.itemWatch.findMany({ orderBy: { itemName: "asc" } });
+  const items: WatchedItem[] = storedItems.map((row) => ({
+    id: row.id,
+    itemName: row.itemName,
+    category: VALID_CATEGORIES.includes(row.category as WatchedItemCategory)
+      ? (row.category as WatchedItemCategory)
+      : "other",
+    minTarget: row.minTarget,
+    alertEnabled: row.alertEnabled,
+  }));
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.08),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_28%),#03050c] px-4 py-8 text-white sm:px-6 lg:px-10">
       <div className="mx-auto max-w-5xl">
         <div className="mb-8 rounded-[2rem] border border-white/10 bg-zinc-950/80 p-8 shadow-2xl shadow-black/30">
           <h1 className="text-3xl font-semibold text-white">Dashboard settings</h1>
-          <p className="mt-3 max-w-2xl text-slate-400">Manage your consumables watchlist thresholds and private dashboard behavior.</p>
+          <p className="mt-3 max-w-2xl text-slate-400">Manage your consumables watchlist: what to track, how low it can go before you get an alert, and whether alerts are active.</p>
         </div>
-        <SettingsForm items={items} />
+        <SettingsForm initialItems={items} />
       </div>
     </main>
   );

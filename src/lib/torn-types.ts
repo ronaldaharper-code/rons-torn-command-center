@@ -167,6 +167,16 @@ export interface AdminSummary {
   lastSynced: string;
 }
 
+export type WatchedItemCategory = "consumable" | "energy" | "happy" | "medical" | "other";
+
+export interface WatchedItem {
+  id: number;
+  itemName: string;
+  category: WatchedItemCategory;
+  minTarget: number;
+  alertEnabled: boolean;
+}
+
 export interface PublicSummary {
   name: string;
   level: number;
