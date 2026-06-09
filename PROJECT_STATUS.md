@@ -568,6 +568,59 @@ confirm the live `v2/user/properties` shape (and check the v1 bundle for
 comparison), then deleted once findings were extracted — same pattern as
 Phases 2–4.
 
+## Database migration — SQLite → Neon Postgres (complete)
+
+The app previously used a local SQLite file (`prisma/dev.db`) which cannot
+persist on Vercel's ephemeral serverless filesystem. Before deploying, the
+database was migrated to **Neon Postgres** via the Vercel marketplace
+integration.
+
+What changed:
+
+1. **Provisioned Neon database** via `vercel install neon --non-interactive`.
+   The Neon integration automatically created a Postgres database, connected
+   it to the `rons-torn-command-center` Vercel project, and set all connection
+   env vars (`POSTGRES_PRISMA_URL`, `DATABASE_URL_UNPOOLED`, `DATABASE_URL`,
+   and ~15 others) for Production, Preview, and Development.
+
+2. **Updated `prisma/schema.prisma`** — changed `provider` from `"sqlite"` to
+   `"postgresql"` and adopted Neon's recommended split-URL pattern:
+   - `url = env("POSTGRES_PRISMA_URL")` — pooled connection with
+     `connect_timeout=15` (prevents cold-start hangs); used by Prisma Client
+     at runtime.
+   - `directUrl = env("DATABASE_URL_UNPOOLED")` — direct connection without
+     pgBouncer; used by `prisma migrate dev/deploy` for schema migrations.
+
+3. **Created initial Postgres migration** — ran `prisma migrate dev --name
+   init_postgres`. Generated `prisma/migrations/20260608200522_init_postgres/
+   migration.sql` which creates all three tables (`Setting`, `ItemWatch`,
+   `Snapshot`) with correct Postgres types (`SERIAL`, `TEXT`, `BOOLEAN`,
+   `TIMESTAMP(3)`) and unique indexes. The `prisma/migrations/` directory is
+   committed and tracked in git.
+
+4. **Updated `vercel.json`** — `buildCommand` changed from `npm run build` to
+   `npx prisma migrate deploy && npm run build`, so schema migrations apply
+   automatically on every Vercel deploy before the build runs.
+
+5. **Tested all database write paths against Neon Postgres**:
+   - ✅ Settings PATCH (Property Advisor thresholds `12`/`4` saved and read back)
+   - ✅ War Readiness Settings PATCH (`preferredTimeZone = America/New_York`)
+   - ✅ ItemWatch CREATE → READ → UPDATE → DELETE (Xanax, full CRUD cycle)
+   - ✅ Snapshot capture — fetched live Torn data (net worth, battle stats,
+     cooldowns) AND persisted to Neon Postgres in one request
+   - ✅ Direct DB query confirmed: 3 `Setting` rows and 1 `Snapshot` row
+     persisted correctly after tests
+
+6. **Lint/build**: clean — same 8 pre-existing issues (none new). Build
+   succeeds against Postgres. All 17 routes compile.
+
+7. **Updated `DEPLOYMENT.md`** — fully rewrote to reflect Neon Postgres setup,
+   split-URL pattern, `prisma migrate deploy` build step, sensitive vs. plain
+   env var distinction, and local dev workflow.
+
+No deployment has occurred yet. The code is committed and ready; awaiting
+explicit user approval before deploying to Vercel production.
+
 ## Commits this session
 - `67cc423` — Fix flat-vs-nested response shapes and rank/points/merits field sources (tagged `v0.3-real-data-foundation`)
 - `2a8ff50` — Build Happy Jump Planner, live Consumables status, and richer advisor recs
@@ -576,17 +629,19 @@ Phases 2–4.
 - `80779e4` — Phase 2: War Readiness Countdown — time-aware readiness score, dual-time (TCT/local) display, Vicodin timing guidance, manual war-time settings, advisor integration
 - `91133a3` — Phase 3: Gear Advisor — live loadout with bonuses/stats/quality, missing-slot and weak-gear detection, war-readiness gear integration, advisor recommendations
 - `3c403b7` — Phase 4: Racing Garage Advisor — live garage/race data, win-rate-based best-car ranking, intra-car weak-area detection, "upgrade details unavailable from API" handling, advisor integration
-- *(this commit)* — Phase 5: Property & Rental Advisor — live rental-extension timing from `v2/user/properties`, threshold-based offer/urgent guidance, manual reminder fallback, advisor integration
+- `ac3225f` — Phase 5: Property & Rental Advisor — live rental-extension timing from `v2/user/properties`, threshold-based offer/urgent guidance, manual reminder fallback, advisor integration
+- *(this commit)* — Database migration: SQLite → Neon Postgres, initial migration, Neon split-URL schema pattern, vercel.json build command updated
 
 ## Next unfinished tasks
 
-Per the roadmap, **Phase 6 — Public Share Pages** is next. Awaiting user
-go-ahead before starting, consistent with the "stop and report after each
-phase" pattern.
+**Deployment to Vercel** — database migration is complete, lint and build are
+clean. Awaiting explicit user approval to push to GitHub and trigger production
+deployment.
+
+After deployment:
+- Phase 6 — Public Share Pages is next on the roadmap
 
 Standing notes (unchanged):
 - Pre-existing duplicate `page 2.tsx` files remain untracked in
   `bank-stocks/`, `garage/`, `gear/`, `jump-planner/` — Finder/iCloud sync
   artifacts, not created by any session work; deliberately left alone.
-- No deployment has occurred. Everything is local-only, per standing
-  instructions ("Do not deploy").
