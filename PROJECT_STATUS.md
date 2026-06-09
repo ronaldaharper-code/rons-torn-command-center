@@ -618,8 +618,16 @@ What changed:
    split-URL pattern, `prisma migrate deploy` build step, sensitive vs. plain
    env var distinction, and local dev workflow.
 
-No deployment has occurred yet. The code is committed and ready; awaiting
-explicit user approval before deploying to Vercel production.
+**Deployed to production on 2026-06-09.**
+Production URL: https://rons-torn-command-center.vercel.app
+
+Production verification (all passed):
+- ✅ Home page loads (HTTP 200, correct title)
+- ✅ Login / dashboard password works
+- ✅ Dashboard loads with authenticated content
+- ✅ Settings page loads (DB read from Neon Postgres)
+- ✅ Snapshot capture (HTTP 201, live Torn data: netWorth 5,776,421,052, energy 100/150, battleStats 961,329)
+- ✅ All 17 routes compiled and live
 
 ## Commits this session
 - `67cc423` — Fix flat-vs-nested response shapes and rank/points/merits field sources (tagged `v0.3-real-data-foundation`)
@@ -630,16 +638,14 @@ explicit user approval before deploying to Vercel production.
 - `91133a3` — Phase 3: Gear Advisor — live loadout with bonuses/stats/quality, missing-slot and weak-gear detection, war-readiness gear integration, advisor recommendations
 - `3c403b7` — Phase 4: Racing Garage Advisor — live garage/race data, win-rate-based best-car ranking, intra-car weak-area detection, "upgrade details unavailable from API" handling, advisor integration
 - `ac3225f` — Phase 5: Property & Rental Advisor — live rental-extension timing from `v2/user/properties`, threshold-based offer/urgent guidance, manual reminder fallback, advisor integration
-- *(this commit)* — Database migration: SQLite → Neon Postgres, initial migration, Neon split-URL schema pattern, vercel.json build command updated
+- `785b2eb` — Database migration: SQLite → Neon Postgres, initial migration, Neon split-URL schema pattern, vercel.json build command updated
+- *(this commit)* — Deploy to Vercel production, production verification, docs updated
 
 ## Next unfinished tasks
 
-**Deployment to Vercel** — database migration is complete, lint and build are
-clean. Awaiting explicit user approval to push to GitHub and trigger production
-deployment.
+**Deployed** — production is live at https://rons-torn-command-center.vercel.app.
 
-After deployment:
-- Phase 6 — Public Share Pages is next on the roadmap
+**Phase 6 — Public Share Pages** is next on the roadmap. Awaiting user go-ahead.
 
 Standing notes (unchanged):
 - Pre-existing duplicate `page 2.tsx` files remain untracked in

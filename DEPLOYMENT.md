@@ -36,11 +36,24 @@ These are **already configured** on the Vercel project. Do not remove them.
 
 > **Important:** `TORN_API_KEY` and `DASHBOARD_PASSWORD` are stored as **sensitive** (write-only) on Vercel — their values cannot be read back via CLI or dashboard once set. If either needs to be rotated, use `vercel env add` to overwrite it.
 
-## Deploying
+## Production URL
 
-1. Push latest code + migrations to GitHub (the Vercel project auto-deploys on push to `main`).
-2. Confirm `vercel.json`'s `buildCommand` includes `prisma migrate deploy`.
+**https://rons-torn-command-center.vercel.app**
+
+First deployed: 2026-06-09. All 17 routes live.
+
+## Deploying updates
+
+1. Push latest code + migrations to GitHub — Vercel auto-deploys on push to `main`.
+2. The `vercel.json` `buildCommand` runs `prisma migrate deploy` before the build, so schema changes apply automatically.
 3. Verify the production URL loads after the deployment completes.
+
+## Adding/updating secrets
+
+`TORN_API_KEY` and `DASHBOARD_PASSWORD` are `type: sensitive` — write-only, cannot be read back via CLI.
+To update them: Vercel dashboard → Project → Settings → Environment Variables → Edit.
+Or via CLI: `npx vercel env rm TORN_API_KEY production && npx vercel env add TORN_API_KEY production`
+(Note: adding to Preview via CLI is buggy in v54 — use the dashboard for Preview.)
 
 ## Local development
 
