@@ -15,7 +15,7 @@ import PropertyAdvisorSummaryCard from "@/components/PropertyAdvisorSummaryCard"
 import { getTornUserData, mapAdminSummary, mapCooldownOverview, getFactionWarStatus, getEquipmentDetails, getPropertyDetails } from "@/lib/torn";
 import { buildRecommendations } from "@/lib/advisor";
 import { getRecentSnapshots, estimateConsumableUsage } from "@/lib/snapshot";
-import { getWarReadinessSettings, getPropertyAdvisorSettings } from "@/lib/settings";
+import { getWarReadinessSettings, getPropertyAdvisorSettings, getJumpPlannerSettings } from "@/lib/settings";
 import { buildWarReadinessPlan } from "@/lib/warReadiness";
 import type { WarTimeSource } from "@/lib/warReadiness";
 import { buildGearAdvisorPlan } from "@/lib/gearAdvisor";
@@ -75,12 +75,13 @@ export default async function DashboardPage() {
   const recentSnapshots = await getRecentSnapshots(60);
   const usageEstimates = estimateConsumableUsage(watchlist, recentSnapshots);
 
-  const [warReadinessSettings, factionWarStatus, equipmentDetails, propertyDetails, propertyAdvisorSettings] = await Promise.all([
+  const [warReadinessSettings, factionWarStatus, equipmentDetails, propertyDetails, propertyAdvisorSettings, jumpPlannerSettings] = await Promise.all([
     getWarReadinessSettings(),
     getFactionWarStatus().catch((): FactionWarStatus => ({})),
     getEquipmentDetails().catch((): EquipmentDetails => ({})),
     getPropertyDetails().catch((): PropertyDetails => ({})),
     getPropertyAdvisorSettings(),
+    getJumpPlannerSettings(),
   ]);
 
   const gearAdvisorPlan = buildGearAdvisorPlan({
@@ -148,6 +149,8 @@ export default async function DashboardPage() {
     gearAdvisor: gearAdvisorPlan,
     garageAdvisor: garageAdvisorPlan,
     propertyAdvisor: propertyAdvisorPlan,
+    jumpPlannerSettings,
+    localTimeZone: warReadinessSettings.preferredTimeZone,
   });
 
   const displayName = summary.character.name !== "Unknown" ? summary.character.name : undefined;

@@ -13,9 +13,10 @@ Center, in priority order:
 2. **War Readiness Countdown** — complete
 3. **Gear Advisor** — complete
 4. **Garage/Racing** — complete
-5. **Property Management** ← just completed (this entry)
-6. Public Share Pages
-7. Multi-user support
+5. **Property Management** — complete
+6. **Happy Jump Planner revision** ← just completed (this entry)
+7. Public Share Pages
+8. Multi-user support
 
 Guiding product principle: **this is a Torn decision engine, not a Torn
 dashboard** — every feature should answer "what should Shenzy do next?"
@@ -639,13 +640,14 @@ Production verification (all passed):
 - `3c403b7` — Phase 4: Racing Garage Advisor — live garage/race data, win-rate-based best-car ranking, intra-car weak-area detection, "upgrade details unavailable from API" handling, advisor integration
 - `ac3225f` — Phase 5: Property & Rental Advisor — live rental-extension timing from `v2/user/properties`, threshold-based offer/urgent guidance, manual reminder fallback, advisor integration
 - `785b2eb` — Database migration: SQLite → Neon Postgres, initial migration, Neon split-URL schema pattern, vercel.json build command updated
-- *(this commit)* — Deploy to Vercel production, production verification, docs updated
+- `e652102` — Deploy to Vercel production, production verification, docs updated
+- *(this commit)* — Phase 6: Happy Jump Planner revision — 7-step workflow, TCT/local cooldown timing, configurable training focus, EDC toggle, advisor integration
 
 ## Next unfinished tasks
 
 **Deployed** — production is live at https://rons-torn-command-center.vercel.app.
 
-**Phase 6 — Public Share Pages** is next on the roadmap. Awaiting user go-ahead.
+**Phase 7 — Public Share Pages** is next on the roadmap. Awaiting user go-ahead.
 
 Standing notes (unchanged):
 - Pre-existing duplicate `page 2.tsx` files remain untracked in

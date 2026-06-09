@@ -157,6 +157,69 @@ export async function setRentalReminderThreshold(
   });
 }
 
+// ─── Jump Planner settings ────────────────────────────────────────────────
+
+const JUMP_SETTING_KEYS = {
+  trainingFocusStats: "jumpTrainingFocusStats",
+  edcBenefitAvailable: "jumpEdcBenefitAvailable",
+} as const;
+
+export type JumpStatKey = "strength" | "defense" | "speed" | "dexterity";
+
+export const DEFAULT_TRAINING_FOCUS_STATS: JumpStatKey[] = ["speed", "dexterity"];
+export const EDC_HAPPY_BOOST = 3000;
+
+export interface JumpPlannerSettings {
+  trainingFocusStats: JumpStatKey[];
+  edcBenefitAvailable: boolean;
+}
+
+const VALID_JUMP_STATS: JumpStatKey[] = ["strength", "defense", "speed", "dexterity"];
+
+function parseTrainingFocusStats(raw: string | undefined): JumpStatKey[] {
+  if (!raw) return DEFAULT_TRAINING_FOCUS_STATS;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_TRAINING_FOCUS_STATS;
+    const filtered = parsed.filter((s): s is JumpStatKey => VALID_JUMP_STATS.includes(s as JumpStatKey));
+    return filtered.length > 0 ? filtered : DEFAULT_TRAINING_FOCUS_STATS;
+  } catch {
+    return DEFAULT_TRAINING_FOCUS_STATS;
+  }
+}
+
+export async function getJumpPlannerSettings(): Promise<JumpPlannerSettings> {
+  const [focusRaw, edcRaw] = await Promise.all([
+    readSetting(JUMP_SETTING_KEYS.trainingFocusStats),
+    readSetting(JUMP_SETTING_KEYS.edcBenefitAvailable),
+  ]);
+  return {
+    trainingFocusStats: parseTrainingFocusStats(focusRaw),
+    edcBenefitAvailable: edcRaw === "false" ? false : true,
+  };
+}
+
+export async function setJumpTrainingFocus(stats: JumpStatKey[]): Promise<void> {
+  const key = JUMP_SETTING_KEYS.trainingFocusStats;
+  const value = JSON.stringify(stats.filter((s): s is JumpStatKey => VALID_JUMP_STATS.includes(s)));
+  await prisma.setting.upsert({
+    where: { ownerKey_key: { ownerKey: DEFAULT_OWNER_KEY, key } },
+    update: { value },
+    create: { ownerKey: DEFAULT_OWNER_KEY, key, value },
+  });
+}
+
+export async function setEdcBenefitAvailable(available: boolean): Promise<void> {
+  const key = JUMP_SETTING_KEYS.edcBenefitAvailable;
+  await prisma.setting.upsert({
+    where: { ownerKey_key: { ownerKey: DEFAULT_OWNER_KEY, key } },
+    update: { value: String(available) },
+    create: { ownerKey: DEFAULT_OWNER_KEY, key, value: String(available) },
+  });
+}
+
+// ─── Property advisor settings (continued) ───────────────────────────────
+
 export async function setManualRentalReminders(reminders: ManualRentalReminder[]): Promise<void> {
   const key = PROPERTY_SETTING_KEYS.manualRentalReminders;
 

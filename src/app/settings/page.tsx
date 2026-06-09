@@ -4,10 +4,11 @@ import ConsumableUsagePanel from "@/components/ConsumableUsagePanel";
 import SnapshotHistoryPanel from "@/components/SnapshotHistoryPanel";
 import { WarReadinessSettingsForm } from "@/components/WarReadinessSettingsForm";
 import { PropertyAdvisorSettingsForm } from "@/components/PropertyAdvisorSettingsForm";
+import { JumpPlannerSettingsForm } from "@/components/JumpPlannerSettingsForm";
 import { prisma } from "@/lib/db";
 import { DEFAULT_OWNER_KEY } from "@/lib/owner";
 import { getRecentSnapshots, estimateConsumableUsage, compareAgainstWindow } from "@/lib/snapshot";
-import { getWarReadinessSettings, getPropertyAdvisorSettings } from "@/lib/settings";
+import { getWarReadinessSettings, getPropertyAdvisorSettings, getJumpPlannerSettings } from "@/lib/settings";
 import type { WatchedItem, WatchedItemCategory } from "@/lib/torn-types";
 
 const VALID_CATEGORIES: WatchedItemCategory[] = ["consumable", "energy", "happy", "medical", "other"];
@@ -47,8 +48,11 @@ export default async function SettingsPage() {
   const recentSnapshots = await getRecentSnapshots(60);
   const usageEstimates = estimateConsumableUsage(items, recentSnapshots);
   const weeklyTrend = compareAgainstWindow(recentSnapshots);
-  const warReadinessSettings = await getWarReadinessSettings();
-  const propertyAdvisorSettings = await getPropertyAdvisorSettings();
+  const [warReadinessSettings, propertyAdvisorSettings, jumpPlannerSettings] = await Promise.all([
+    getWarReadinessSettings(),
+    getPropertyAdvisorSettings(),
+    getJumpPlannerSettings(),
+  ]);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.08),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_28%),#03050c] px-4 py-8 text-white sm:px-6 lg:px-10">
@@ -70,6 +74,12 @@ export default async function SettingsPage() {
             initialExtensionReminderDays={propertyAdvisorSettings.rentalExtensionReminderDays}
             initialUrgentReminderDays={propertyAdvisorSettings.urgentRentalReminderDays}
             initialManualReminders={propertyAdvisorSettings.manualRentalReminders}
+          />
+        </div>
+        <div className="mt-8">
+          <JumpPlannerSettingsForm
+            initialTrainingFocusStats={jumpPlannerSettings.trainingFocusStats}
+            initialEdcBenefitAvailable={jumpPlannerSettings.edcBenefitAvailable}
           />
         </div>
         <div className="mt-8">

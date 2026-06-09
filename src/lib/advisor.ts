@@ -5,6 +5,9 @@ import type { WarReadinessPlan } from "./warReadiness";
 import type { GearAdvisorPlan } from "./gearAdvisor";
 import type { GarageAdvisorPlan } from "./garageAdvisor";
 import type { PropertyAdvisorPlan } from "./propertyAdvisor";
+import type { JumpPlannerSettings } from "./settings";
+import { DEFAULT_TRAINING_FOCUS_STATS } from "./settings";
+import { DEFAULT_LOCAL_TIME_ZONE } from "./time";
 import type {
   CharacterOverview,
   CooldownEntry,
@@ -36,9 +39,8 @@ export interface AdvisorInput {
   inventory?: TornItemInventory;
   watchlist: WatchedItem[];
   usageEstimates?: ConsumableUsageEstimate[];
-  // Future hooks: wired up once their data sources land. Each currently
-  // contributes no recommendations, but keeping them in the input shape
-  // means the engine itself won't need to change when they're filled in.
+  jumpPlannerSettings?: JumpPlannerSettings;
+  localTimeZone?: string;
   bank?: unknown;
   equipment?: TornEquipmentItem[];
   enlistedcars?: TornEnlistedCar[];
@@ -251,34 +253,70 @@ function cooldownRecommendations(
   return recommendations;
 }
 
-// Builds on `buildJumpPlan` (shared with the Jump Planner page) so the
-// readiness call here always matches what the planner shows in detail —
-// "wait" produces no recommendation since there's nothing actionable to do.
+// Mirrors the Jump Planner page — same plan, surfaced as a dashboard feed item.
 function jumpPlannerRecommendations(plan: JumpPlan): Recommendation[] {
-  switch (plan.readiness) {
-    case "ready":
+  const statLabel = plan.trainingFocusStats
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" + ");
+
+  switch (plan.phase) {
+    case "take-ecstasy":
       return [
         {
           priority: "high",
-          title: plan.headline,
-          explanation: plan.summary,
-          recommendedAction: "Open the Jump Planner, pop your happy/energy items, then head to the gym while the boost is active.",
+          title: "Take Ecstasy and begin training",
+          explanation: `Energy: ${plan.energy.current}/${plan.energy.maximum}. Drug and booster cooldowns are clear. All jump conditions are met.`,
+          recommendedAction: `Take Ecstasy now and train ${statLabel} immediately.`,
           relatedModule: "jump-planner",
-          confidenceScore: 0.8,
+          confidenceScore: 0.9,
         },
       ];
-    case "prepare":
+    case "stacking-happy": {
+      const timeInfo = plan.blockerClearsIn ? ` Jump ready in ${plan.blockerClearsIn}.` : "";
       return [
         {
           priority: "medium",
-          title: plan.headline,
-          explanation: plan.summary,
-          recommendedAction: "Check the Jump Planner for exactly which requirements are still unmet, then line them up before training.",
+          title: `Energy target reached — stack happy.${timeInfo}`,
+          explanation: `Energy ${plan.energy.current} past the ${plan.energyTarget} target. ${plan.blockerLabel ?? "Cooldown"} is the current blocker.`,
+          recommendedAction: `Use Erotic DVDs and Candy to build happy.${plan.edcBenefitAvailable ? " Use EDC benefit (+3,000 happy)." : ""} Save Ecstasy for the jump trigger.`,
           relatedModule: "jump-planner",
-          confidenceScore: 0.6,
+          confidenceScore: 0.75,
         },
       ];
-    case "wait":
+    }
+    case "building-energy":
+      return [
+        {
+          priority: "medium",
+          title: "Building energy for happy jump",
+          explanation: `Energy: ${plan.energy.current} — below the ${plan.energyTarget} target. ${plan.inventory.xanax} Xanax on hand.`,
+          recommendedAction: "Continue building energy with Xanax. Stack happy simultaneously.",
+          relatedModule: "jump-planner",
+          confidenceScore: 0.65,
+        },
+      ];
+    case "post-first-train":
+      return [
+        {
+          priority: "high",
+          title: "Use point refill — then train again",
+          explanation: `First training cycle likely complete. Energy is low (${plan.energy.current}). You have ${plan.points.toLocaleString()} points.`,
+          recommendedAction: `Use a point refill to restore energy, then complete the second ${statLabel} training cycle.`,
+          relatedModule: "jump-planner",
+          confidenceScore: 0.7,
+        },
+      ];
+    case "missing-ecstasy":
+      return [
+        {
+          priority: "high",
+          title: "Short 1 Ecstasy — jump blocked",
+          explanation: `Energy (${plan.energy.current}) and cooldowns are ready but you have no Ecstasy to trigger the jump.`,
+          recommendedAction: "Restock Ecstasy before proceeding.",
+          relatedModule: "jump-planner",
+          confidenceScore: 0.85,
+        },
+      ];
     default:
       return [];
   }
@@ -679,9 +717,11 @@ function snapshotTrendRecommendations(): Recommendation[] {
 export function buildRecommendations(input: AdvisorInput): Recommendation[] {
   const jumpPlan = buildJumpPlan({
     character: input.character,
-    battleStats: input.battleStats,
     cooldownOverview: input.cooldownOverview,
     inventory: input.inventory,
+    trainingFocusStats: input.jumpPlannerSettings?.trainingFocusStats ?? DEFAULT_TRAINING_FOCUS_STATS,
+    edcBenefitAvailable: input.jumpPlannerSettings?.edcBenefitAvailable ?? true,
+    localTimeZone: input.localTimeZone ?? DEFAULT_LOCAL_TIME_ZONE,
   });
 
   const recommendations: Recommendation[] = [
